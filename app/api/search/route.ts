@@ -117,6 +117,7 @@ export async function POST(request: Request) {
         rating: sql`excluded.rating`,
         reviews: sql`excluded.reviews`,
         updatedAt: sql`now()`,
+        contentRefreshedAt: sql`now()`, // re-find counts as a fresh fetch
         // status and notes intentionally omitted — never clobbered on a re-find.
       },
     })

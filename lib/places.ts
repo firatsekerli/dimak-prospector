@@ -34,6 +34,47 @@ export interface PlaceHit {
   businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
 }
 
+// Place Details (New) field mask — same fields, no "places." prefix (single place).
+const DETAILS_FIELD_MASK = [
+  "id",
+  "displayName",
+  "formattedAddress",
+  "nationalPhoneNumber",
+  "internationalPhoneNumber",
+  "websiteUri",
+  "rating",
+  "userRatingCount",
+  "primaryTypeDisplayName",
+  "googleMapsUri",
+  "businessStatus",
+].join(",");
+
+/**
+ * Fetch fresh details for a single known place_id (Place Details New). Used by
+ * the ≤30-day refresh cache. Returns null on 404/error so the caller can decide.
+ */
+export async function placeDetails(placeId: string, apiKey: string): Promise<PlaceHit | null> {
+  const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {
+    headers: { "X-Goog-Api-Key": apiKey, "X-Goog-FieldMask": DETAILS_FIELD_MASK },
+  }).catch(() => null);
+  if (!res || !res.ok) return null;
+  const p = (await res.json()) as Record<string, unknown>;
+  const displayName = p.displayName as { text?: string } | undefined;
+  const primaryType = p.primaryTypeDisplayName as { text?: string } | undefined;
+  return {
+    placeId: (p.id as string) ?? placeId,
+    company: displayName?.text ?? "",
+    category: primaryType?.text ?? "",
+    address: (p.formattedAddress as string) ?? "",
+    phone: (p.internationalPhoneNumber as string) ?? (p.nationalPhoneNumber as string) ?? "",
+    website: (p.websiteUri as string) ?? "",
+    rating: typeof p.rating === "number" ? p.rating : null,
+    reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
+    googleMapsUrl: (p.googleMapsUri as string) ?? "",
+    businessStatus: (p.businessStatus as string) ?? "",
+  };
+}
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**

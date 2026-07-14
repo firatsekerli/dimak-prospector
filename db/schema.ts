@@ -34,6 +34,9 @@ export const prospects = pgTable("prospects", {
   source: text("source"), // e.g. 'Google Places'
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  // When the Google-sourced fields were last fetched (for the ≤30-day refresh
+  // cache required by the Places terms). User data is never expired by this.
+  contentRefreshedAt: timestamp("content_refreshed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Prospect = typeof prospects.$inferSelect;

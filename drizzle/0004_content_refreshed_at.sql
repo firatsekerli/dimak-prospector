@@ -1,0 +1,1 @@
+ALTER TABLE "prospects" ADD COLUMN "content_refreshed_at" timestamp with time zone DEFAULT now() NOT NULL;

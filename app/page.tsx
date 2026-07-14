@@ -199,20 +199,23 @@ export default function Console() {
   async function runCleanup() {
     if (
       !window.confirm(
-        "Re-check every saved business against Google and remove ones now permanently closed?\n\nThis makes one billed Places call per business."
+        "Refresh saved businesses against Google — updates their details and removes permanently-closed ones?\n\nThis makes one billed Places call per business refreshed."
       )
     )
       return;
     setCleanupBusy(true);
-    setCleanupMsg("Checking businesses against Google…");
+    setCleanupMsg("Refreshing businesses against Google…");
     try {
-      const res = await fetch("/api/prospects/cleanup-closed", { method: "POST" });
+      const res = await fetch("/api/prospects/refresh", { method: "POST" });
       const d = await res.json();
       if (!res.ok) {
-        setCleanupMsg(d.error || "Cleanup failed.");
+        setCleanupMsg(d.error || "Refresh failed.");
         return;
       }
-      setCleanupMsg(`Removed ${d.removed} permanently-closed of ${d.checked} checked.`);
+      setCleanupMsg(
+        `Refreshed ${d.updated}, removed ${d.removed} closed (of ${d.checked} checked` +
+          (d.remaining ? `, ${d.remaining} left for the weekly refresh).` : ").")
+      );
       await reload(filters);
     } catch {
       setCleanupMsg("Could not reach the server. Please try again.");
@@ -616,7 +619,7 @@ export default function Console() {
             disabled={cleanupBusy}
             className="text-xs text-mute underline-offset-2 hover:text-ember-dk hover:underline disabled:opacity-50"
           >
-            {cleanupBusy ? "Checking…" : "Remove permanently-closed"}
+            {cleanupBusy ? "Refreshing…" : "Refresh & clean saved data"}
           </button>
           {cleanupMsg && <span className="text-xs text-mute">{cleanupMsg}</span>}
         </div>
