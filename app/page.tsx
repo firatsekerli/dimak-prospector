@@ -287,6 +287,12 @@ export default function Console() {
             <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className={`w-full ${inputCls}`} />
           </div>
+          <a
+            href="/api/export"
+            className="rounded-md border border-line bg-white px-[18px] py-2.5 text-sm font-semibold text-ink hover:border-ember hover:text-ember-dk"
+          >
+            Export to Excel
+          </a>
         </div>
 
         {/* Results table */}

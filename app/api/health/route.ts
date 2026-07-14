@@ -17,7 +17,7 @@ export async function GET() {
   } = {
     ok: true,
     app: "dimak-prospector",
-    phase: 5,
+    phase: 6,
     db: "unknown",
     table: "unknown",
   };
