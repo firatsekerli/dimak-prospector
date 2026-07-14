@@ -231,3 +231,10 @@ Tender and procurement portal ingestion and trade-show exhibitor scraping (these
 will use Bright Data and feed the same `prospects` table), multi-user accounts,
 and CRM export. Design the search layer so additional sources can be added as
 new `source` values without reworking the schema.
+
+## v2 (planned, see `docs/V2.md`)
+
+A market-intelligence layer: steel-door (HS `730830`) import statistics per Gulf
+country, pulled from the free UN Comtrade API (the source behind ITC TradeMap),
+cached in a separate `steel_door_imports` table, to prioritize which markets to
+work first. Env var `COMTRADE_API_KEY`. Does not change v1 behavior.
