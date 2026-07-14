@@ -26,14 +26,16 @@ export default function Console() {
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [data, setData] = useState<ProspectsResponse | null>(null);
+  const [enriching, setEnriching] = useState<Record<string, boolean>>({});
   const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Fetch prospects for a given filter set. Stable identity — callers pass the
-  // filters explicitly so there's no stale-closure risk.
-  const reload = useCallback(async (f: Filters) => {
+  // Fetch prospects for a given filter set and return the response too, so
+  // callers (search, enrich loop) can act on the fresh rows.
+  const reload = useCallback(async (f: Filters): Promise<ProspectsResponse> => {
     const params = new URLSearchParams(f as unknown as Record<string, string>);
     const res: ProspectsResponse = await (await fetch("/api/prospects?" + params)).json();
     setData(res);
+    return res;
   }, []);
 
   // Load config (all city chips on) + the initial list once.
@@ -52,7 +54,6 @@ export default function Console() {
     () => ["All", ...new Set((config?.cities ?? []).map((c) => c.country))],
     [config]
   );
-
   const selectedCities = useMemo(
     () => (config?.cities ?? []).filter((c) => activeCities[c.city]),
     [config, activeCities]
@@ -63,7 +64,6 @@ export default function Console() {
   const setAllCities = (on: boolean) =>
     setActiveCities(Object.fromEntries((config?.cities ?? []).map((c) => [c.city, on])));
 
-  // Filter changes: update state and reload with the new value immediately.
   const changeFilter = (key: keyof Filters, value: string) => {
     const next = { ...filters, [key]: value };
     setFilters(next);
@@ -84,14 +84,36 @@ export default function Console() {
     });
   }
 
-  // Status edit: save, then reload so the stats strip + any active status filter
-  // stay correct.
   const onStatus = async (placeId: string, status: string) => {
     await save(placeId, { status });
     reload(filters);
   };
-  // Notes edit: save on blur; no reload (notes don't affect counts/filters).
   const onNotes = (placeId: string, notes: string) => save(placeId, { notes });
+
+  // Patch a single row's emails in place (avoids a full reload per lookup).
+  const patchEmails = (placeId: string, emails: string) =>
+    setData((prev) =>
+      prev
+        ? { ...prev, rows: prev.rows.map((r) => (r.placeId === placeId ? { ...r, emails } : r)) }
+        : prev
+    );
+
+  const enrichOne = useCallback(async (placeId: string): Promise<string> => {
+    setEnriching((prev) => ({ ...prev, [placeId]: true }));
+    try {
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ place_id: placeId }),
+      });
+      const d = await res.json();
+      const emails: string = d.emails ?? "";
+      patchEmails(placeId, emails);
+      return emails;
+    } finally {
+      setEnriching((prev) => ({ ...prev, [placeId]: false }));
+    }
+  }, []);
 
   async function runSearch() {
     const kw = keyword.trim();
@@ -102,6 +124,7 @@ export default function Console() {
     let added = 0;
     let updated = 0;
     try {
+      let latest = data;
       for (let i = 0; i < selectedCities.length; i++) {
         const city = selectedCities[i].city;
         setSearchMsg(`Searching ${city} ${i + 1}/${selectedCities.length}…`);
@@ -117,8 +140,20 @@ export default function Console() {
         }
         added += d.added ?? 0;
         updated += d.updated ?? 0;
-        await reload(filters);
+        latest = await reload(filters);
       }
+
+      // Optional convenience: after the searches, look up emails for the loaded
+      // rows that have a website and none yet. Each is a separate /api/enrich
+      // call (never inline in search).
+      if (enrich && latest) {
+        const todo = latest.rows.filter((r) => r.website && !(r.emails ?? "").length);
+        for (let i = 0; i < todo.length; i++) {
+          setSearchMsg(`Looking up emails ${i + 1}/${todo.length}…`);
+          await enrichOne(todo[i].placeId);
+        }
+      }
+
       setSearchMsg(`Added ${added} new, refreshed ${updated}.`);
     } catch {
       setSearchMsg("Could not reach the server. Please try again.");
@@ -180,12 +215,9 @@ export default function Console() {
               </select>
             </div>
 
-            <label
-              className="flex items-center gap-1.5 text-[13px] text-mute"
-              title="Email lookup is added in a later step"
-            >
-              <input type="checkbox" checked={enrich} disabled onChange={(e) => setEnrich(e.target.checked)} />
-              Look up emails <span className="text-[11px]">(soon)</span>
+            <label className="flex items-center gap-1.5 text-[13px] text-steel" title="Fetch public emails from each company website after searching">
+              <input type="checkbox" checked={enrich} onChange={(e) => setEnrich(e.target.checked)} />
+              Look up emails <span className="text-[11px] text-mute">(slower)</span>
             </label>
 
             <button
@@ -253,12 +285,7 @@ export default function Console() {
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} cls={inputCls} />
           <div className="min-w-[200px] flex-1">
             <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Find in list</label>
-            <input
-              value={filters.q}
-              onChange={(e) => changeFind(e.target.value)}
-              placeholder="company or city"
-              className={`w-full ${inputCls}`}
-            />
+            <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className={`w-full ${inputCls}`} />
           </div>
         </div>
 
@@ -285,8 +312,10 @@ export default function Console() {
                     key={r.placeId}
                     r={r}
                     statuses={config?.statuses ?? []}
+                    enriching={!!enriching[r.placeId]}
                     onStatus={onStatus}
                     onNotes={onNotes}
+                    onFind={enrichOne}
                   />
                 ))}
               </tbody>
@@ -335,13 +364,17 @@ function FilterSelect({
 function Row({
   r,
   statuses,
+  enriching,
   onStatus,
   onNotes,
+  onFind,
 }: {
   r: ProspectRow;
   statuses: string[];
+  enriching: boolean;
   onStatus: (placeId: string, status: string) => void;
   onNotes: (placeId: string, notes: string) => void;
+  onFind: (placeId: string) => void;
 }) {
   const emails = (r.emails ?? "").split(" | ").filter(Boolean);
   return (
@@ -382,6 +415,14 @@ function Row({
               {e}
             </a>
           ))
+        ) : r.website ? (
+          <button
+            onClick={() => onFind(r.placeId)}
+            disabled={enriching}
+            className="rounded border border-line px-2 py-1 text-[11px] text-steel hover:border-ember hover:text-ember-dk disabled:opacity-50"
+          >
+            {enriching ? "Finding…" : "Find email"}
+          </button>
         ) : (
           <span className="text-mute">—</span>
         )}
