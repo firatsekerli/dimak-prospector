@@ -69,6 +69,7 @@ export async function POST(request: Request) {
   const values: NewProspect[] = [];
   for (const h of hits) {
     if (!h.placeId || seen.has(h.placeId)) continue;
+    if (h.businessStatus === "CLOSED_PERMANENTLY") continue; // skip permanently closed
     seen.add(h.placeId);
     values.push({
       placeId: h.placeId,

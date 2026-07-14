@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { and, asc, eq, ilike, like, or } from "drizzle-orm";
+import { and, asc, eq, ilike, like, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { prospects } from "@/db/schema";
 import { cleanEmailsField } from "@/lib/email";
@@ -37,12 +37,15 @@ export async function GET(request: Request) {
   const country = searchParams.get("country");
   const segment = searchParams.get("segment");
   const status = searchParams.get("status");
+  const website = searchParams.get("website");
   const q = searchParams.get("q");
 
   const conditions = [];
   if (country && country !== "All") conditions.push(eq(prospects.country, country));
   if (segment && segment !== "All") conditions.push(like(prospects.segment, `%${segment}%`));
   if (status && status !== "All") conditions.push(eq(prospects.status, status));
+  if (website === "Has site") conditions.push(sql`coalesce(${prospects.website}, '') <> ''`);
+  else if (website === "No site") conditions.push(sql`coalesce(${prospects.website}, '') = ''`);
   if (q) conditions.push(or(ilike(prospects.company, `%${q}%`), ilike(prospects.city, `%${q}%`)));
 
   const db = getDb();

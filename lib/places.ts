@@ -15,6 +15,7 @@ const FIELD_MASK = [
   "places.userRatingCount",
   "places.primaryTypeDisplayName",
   "places.googleMapsUri",
+  "places.businessStatus",
   "nextPageToken",
 ].join(",");
 
@@ -30,6 +31,7 @@ export interface PlaceHit {
   rating: number | null;
   reviews: number | null;
   googleMapsUrl: string;
+  businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -91,6 +93,7 @@ export async function placesSearch(
         rating: typeof p.rating === "number" ? p.rating : null,
         reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
         googleMapsUrl: (p.googleMapsUri as string) ?? "",
+        businessStatus: (p.businessStatus as string) ?? "",
       });
     }
 

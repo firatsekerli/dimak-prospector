@@ -26,8 +26,8 @@ const usdCompact = new Intl.NumberFormat("en", {
 });
 const fmtUSD = (v: number | null) => (v == null ? "—" : usdCompact.format(v));
 
-type Filters = { country: string; segment: string; status: string; q: string };
-const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", status: "All", q: "" };
+type Filters = { country: string; segment: string; status: string; website: string; q: string };
+const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", status: "All", website: "All", q: "" };
 
 export default function Console() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -113,6 +113,7 @@ export default function Console() {
     if (filters.country !== "All") p.set("country", filters.country);
     if (filters.segment !== "All") p.set("segment", filters.segment);
     if (filters.status !== "All") p.set("status", filters.status);
+    if (filters.website !== "All") p.set("website", filters.website);
     if (filters.q) p.set("q", filters.q);
     const s = p.toString();
     return "/api/export" + (s ? "?" + s : "");
@@ -487,6 +488,7 @@ export default function Console() {
           <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} />
           <FilterSelect label="Segment" value={filters.segment} options={["All", ...(config?.segments ?? [])]} onChange={(v) => changeFilter("segment", v)} />
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} />
+          <FilterSelect label="Website" value={filters.website} options={["All", "Has site", "No site"]} onChange={(v) => changeFilter("website", v)} />
           <div className="min-w-[200px] flex-1">
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
