@@ -1,0 +1,20 @@
+CREATE TABLE "prospects" (
+	"place_id" text PRIMARY KEY NOT NULL,
+	"company" text,
+	"segment" text,
+	"country" text,
+	"city" text,
+	"category" text,
+	"address" text,
+	"phone" text,
+	"website" text,
+	"emails" text,
+	"rating" real,
+	"reviews" integer,
+	"google_maps_url" text,
+	"status" text DEFAULT 'New' NOT NULL,
+	"notes" text DEFAULT '' NOT NULL,
+	"source" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
+);
