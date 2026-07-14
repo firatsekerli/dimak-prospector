@@ -6,15 +6,27 @@ const EMAIL_BLOCKLIST = ["example.com", "sentry.io", "wixpress.com", "@2x", ".pn
 
 // Common contact paths, tried in order until one yields addresses.
 const PATHS = ["", "/contact", "/contact-us", "/iletisim", "/about"];
-const USER_AGENT = "Mozilla/5.0 (compatible; DimakProspector/1.0)";
 const FETCH_TIMEOUT_MS = 8000;
+
+// A realistic browser User-Agent + headers so sites that reject unknown clients
+// (many use basic bot filtering) still serve their HTML. Sites behind a full
+// JS/Cloudflare challenge still can't be read without a real browser.
+const BROWSER_HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+  "Accept-Language": "en-US,en;q=0.9",
+};
 
 export function extractEmails(html: string): string[] {
   if (!html) return [];
   const out: string[] = [];
   for (const match of html.match(EMAIL_RE) ?? []) {
-    const e = match.toLowerCase().replace(/\.+$/, ""); // lowercase, strip trailing dots
-    if (EMAIL_BLOCKLIST.some((bad) => e.includes(bad))) continue;
+    const e = match
+      .toLowerCase()
+      .replace(/^(?:%[0-9a-f]{2})+/, "") // strip leading URL-encoded bytes (e.g. %20)
+      .replace(/\.+$/, ""); // strip trailing dots
+    if (!e || EMAIL_BLOCKLIST.some((bad) => e.includes(bad))) continue;
     if (!out.includes(e)) out.push(e);
   }
   return out;
@@ -25,7 +37,7 @@ async function fetchText(url: string): Promise<string | null> {
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": USER_AGENT },
+      headers: BROWSER_HEADERS,
       redirect: "follow",
       signal: controller.signal,
     });
