@@ -64,3 +64,33 @@ export const steelDoorImports = pgTable(
 
 export type SteelDoorImport = typeof steelDoorImports.$inferSelect;
 export type NewSteelDoorImport = typeof steelDoorImports.$inferInsert;
+
+/**
+ * v3 — geography cache from GeoNames. `geo_countries` holds the supported
+ * continents' countries (ISO2 + UN M49 numeric, used as the Places region code
+ * and the Comtrade reporter code); `geo_cities` holds each country's top cities
+ * by population. Cached so we hit GeoNames at most once per country.
+ */
+export const geoCountries = pgTable("geo_countries", {
+  code: text("code").primaryKey(), // ISO 3166-1 alpha-2, e.g. 'AE'
+  name: text("name").notNull(),
+  continent: text("continent").notNull(), // 'AS' | 'EU' | 'AF' | ...
+  continentName: text("continent_name").notNull(),
+  isoNumeric: integer("iso_numeric"), // UN M49 (Comtrade reporter code)
+  fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const geoCities = pgTable(
+  "geo_cities",
+  {
+    countryCode: text("country_code").notNull(),
+    city: text("city").notNull(),
+    adminName: text("admin_name"),
+    population: integer("population"),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.countryCode, t.city] })]
+);
+
+export type GeoCountryRow = typeof geoCountries.$inferSelect;
+export type GeoCityRow = typeof geoCities.$inferSelect;

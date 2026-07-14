@@ -15,6 +15,13 @@
       "when": 1784021481613,
       "tag": "0001_steel_door_imports",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784025487942,
+      "tag": "0002_geo_cache",
+      "breakpoints": true
     }
   ]
 }
