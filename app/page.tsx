@@ -51,6 +51,8 @@ export default function Console() {
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
   const [market, setMarket] = useState<MarketResponse | null>(null);
+  const [cleanupBusy, setCleanupBusy] = useState(false);
+  const [cleanupMsg, setCleanupMsg] = useState("");
   const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const reload = useCallback(async (f: Filters): Promise<ProspectsResponse> => {
@@ -147,6 +149,31 @@ export default function Console() {
     setFilters(DEFAULT_FILTERS);
     reload(DEFAULT_FILTERS);
   };
+
+  async function runCleanup() {
+    if (
+      !window.confirm(
+        "Re-check every saved business against Google and remove ones now permanently closed?\n\nThis makes one billed Places call per business."
+      )
+    )
+      return;
+    setCleanupBusy(true);
+    setCleanupMsg("Checking businesses against Google…");
+    try {
+      const res = await fetch("/api/prospects/cleanup-closed", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) {
+        setCleanupMsg(d.error || "Cleanup failed.");
+        return;
+      }
+      setCleanupMsg(`Removed ${d.removed} permanently-closed of ${d.checked} checked.`);
+      await reload(filters);
+    } catch {
+      setCleanupMsg("Could not reach the server. Please try again.");
+    } finally {
+      setCleanupBusy(false);
+    }
+  }
 
   const toggleCity = (city: string) =>
     setActiveCities((prev) => ({ ...prev, [city]: !prev[city] }));
@@ -496,6 +523,18 @@ export default function Console() {
           <button onClick={showAll} className="btn btn-ghost">Show all</button>
           <a href="/api/export" className="btn btn-ghost">Export all</a>
           <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
+        </div>
+
+        {/* Maintenance: prune permanently-closed businesses */}
+        <div className="mb-2 flex flex-wrap items-center gap-3">
+          <button
+            onClick={runCleanup}
+            disabled={cleanupBusy}
+            className="text-xs text-mute underline-offset-2 hover:text-ember-dk hover:underline disabled:opacity-50"
+          >
+            {cleanupBusy ? "Checking…" : "Remove permanently-closed"}
+          </button>
+          {cleanupMsg && <span className="text-xs text-mute">{cleanupMsg}</span>}
         </div>
 
         {/* Results table */}
