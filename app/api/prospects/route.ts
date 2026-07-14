@@ -4,6 +4,7 @@ import { getDb } from "@/db";
 import { prospects } from "@/db/schema";
 import { STATUSES } from "@/lib/config";
 import { waLink } from "@/lib/format";
+import { cleanEmailsField } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,11 @@ export async function GET(request: Request) {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(prospects.country), asc(prospects.city), asc(prospects.company));
 
-  const out = rows.map((r) => ({ ...r, wa: waLink(r.phone) }));
+  const out = rows.map((r) => ({
+    ...r,
+    emails: cleanEmailsField(r.emails),
+    wa: waLink(r.phone),
+  }));
 
   const counts: Record<string, number> = Object.fromEntries(STATUSES.map((s) => [s, 0]));
   for (const r of out) counts[r.status] = (counts[r.status] ?? 0) + 1;

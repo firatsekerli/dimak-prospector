@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 import { asc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { prospects } from "@/db/schema";
+import { cleanEmailsField } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs"; // exceljs needs Node APIs
@@ -41,7 +42,7 @@ export async function GET() {
   // Header row: Dimak orange fill, bold white text.
   const header = ws.getRow(1);
   header.eachCell((cell) => {
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFC8511B" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFF6B00" } };
     cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
     cell.alignment = { vertical: "middle" };
   });
@@ -56,7 +57,7 @@ export async function GET() {
       address: r.address,
       phone: r.phone,
       website: r.website,
-      emails: r.emails,
+      emails: cleanEmailsField(r.emails),
       rating: r.rating,
       reviews: r.reviews,
       status: r.status,

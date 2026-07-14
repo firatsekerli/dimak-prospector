@@ -18,6 +18,16 @@ const BROWSER_HEADERS = {
   "Accept-Language": "en-US,en;q=0.9",
 };
 
+/**
+ * Clean an already-stored `emails` field (" | "-joined) on read: re-extract to
+ * strip junk such as leading %20 from older rows and de-duplicate. Keeps the
+ * display and export correct even for data saved before the extraction fix.
+ */
+export function cleanEmailsField(field: string | null | undefined): string {
+  if (!field) return "";
+  return extractEmails(field).slice(0, 3).join(" | ");
+}
+
 export function extractEmails(html: string): string[] {
   if (!html) return [];
   const out: string[] = [];
