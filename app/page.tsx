@@ -508,7 +508,7 @@ export default function Console() {
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Company", "Segment", "Location", "Contact details", "Rating", "Status", "Notes"].map((h) => (
+                  {["Company", "Segment", "Location", "Contact details", "Status", "Notes"].map((h) => (
                     <th key={h} className="border-b border-line bg-[#f6f8fa] p-2.5 text-left text-[10px] uppercase tracking-[0.1em] text-mute">
                       {h}
                     </th>
@@ -664,7 +664,6 @@ function Row({
         </div>
       </td>
 
-      <td className={`${cell} font-mono text-xs`}>{r.rating ?? ""}</td>
       <td className={cell}>
         <select
           value={r.status}
