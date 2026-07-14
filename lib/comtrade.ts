@@ -73,6 +73,46 @@ async function callComtrade(apiKey: string, reporterCodes: number[], years: numb
   throw new Error("Comtrade 429: rate limit — try again in ~30 seconds.");
 }
 
+export interface ImportYear {
+  period: number;
+  importValue: number | null;
+  quantity: number | null;
+}
+
+/**
+ * Fetch steel-door imports for ONE reporter across the given years (single call).
+ * One record per year — the World aggregate (largest value if breakdowns exist).
+ */
+export async function fetchImportsForReporter(
+  apiKey: string,
+  reporterCode: number,
+  years: number[]
+): Promise<ImportYear[]> {
+  const rows = await callComtrade(apiKey, [reporterCode], years);
+
+  const best = new Map<number, RawRow>();
+  for (const row of rows) {
+    const period = Number(row.period);
+    if (!Number.isFinite(period)) continue;
+    const cur = best.get(period);
+    const v = typeof row.primaryValue === "number" ? row.primaryValue : -1;
+    if (!cur || v > (cur.primaryValue ?? -1)) best.set(period, row);
+  }
+
+  return [...best.entries()]
+    .map(([period, row]) => ({
+      period,
+      importValue: typeof row.primaryValue === "number" ? row.primaryValue : null,
+      quantity:
+        typeof row.netWgt === "number"
+          ? row.netWgt
+          : typeof row.qty === "number"
+            ? row.qty
+            : null,
+    }))
+    .sort((a, b) => a.period - b.period);
+}
+
 /**
  * Fetch steel-door imports for every Gulf reporter across the given years in one
  * request. Returns at most one record per (reporter, year) — the World

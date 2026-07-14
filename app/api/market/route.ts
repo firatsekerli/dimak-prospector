@@ -1,63 +1,69 @@
 import { NextResponse } from "next/server";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { steelDoorImports } from "@/db/schema";
-import { GULF_REPORTERS, HS_STEEL_DOORS } from "@/lib/comtrade";
-import type { MarketRow } from "@/lib/types";
+import { steelDoorImports, geoCountries } from "@/db/schema";
+import { HS_STEEL_DOORS } from "@/lib/comtrade";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/market — for each Gulf country, the latest steel-door import value
- * and its YoY growth vs the most recent prior year with data. Ranked by latest
- * value (biggest importer first). Reads from Postgres only — no external call.
+ * GET /api/market?country=XX — the selected country's steel-door (HS 730830)
+ * import series, latest value, and YoY growth. Reads Postgres only.
  */
-export async function GET() {
-  const db = getDb();
-  const rows = (await db.select().from(steelDoorImports)).filter(
-    (r) => r.hsCode === HS_STEEL_DOORS
-  );
-
-  const byCountry = new Map<string, typeof rows>();
-  for (const r of rows) {
-    const arr = byCountry.get(r.country) ?? [];
-    arr.push(r);
-    byCountry.set(r.country, arr);
+export async function GET(request: Request) {
+  const code = (new URL(request.url).searchParams.get("country") ?? "").toUpperCase();
+  if (!/^[A-Z]{2}$/.test(code)) {
+    return NextResponse.json({ error: "A 2-letter country code is required." }, { status: 400 });
   }
 
-  // Include every Gulf country, even those with no data yet.
-  const countries = new Set<string>([
-    ...GULF_REPORTERS.map((r) => r.country),
-    ...byCountry.keys(),
-  ]);
+  const db = getDb();
+  const [geo] = await db.select().from(geoCountries).where(eq(geoCountries.code, code)).limit(1);
+  const reporterCode = geo?.isoNumeric ?? null;
+  const country = geo?.name ?? code;
 
-  const markets: MarketRow[] = [];
-  for (const country of countries) {
-    const withData = (byCountry.get(country) ?? [])
-      .filter((r) => r.importValue != null)
-      .sort((a, b) => b.period - a.period);
+  const empty = {
+    code,
+    country,
+    reporterCode,
+    hsCode: HS_STEEL_DOORS,
+    latest: null,
+    series: [],
+    updatedAt: null,
+  };
+  if (reporterCode == null) return NextResponse.json(empty);
 
-    if (withData.length === 0) {
-      markets.push({ country, year: null, importValue: null, prevYear: null, growthPct: null });
-      continue;
-    }
+  const rows = await db
+    .select()
+    .from(steelDoorImports)
+    .where(
+      and(
+        eq(steelDoorImports.reporterCode, reporterCode),
+        eq(steelDoorImports.hsCode, HS_STEEL_DOORS)
+      )
+    );
 
-    const current = withData[0];
-    const previous = withData.find((r) => r.period < current.period) ?? null;
+  if (rows.length === 0) return NextResponse.json(empty);
+
+  const withData = rows
+    .filter((r) => r.importValue != null)
+    .sort((a, b) => a.period - b.period);
+  const series = withData.map((r) => ({ period: r.period, importValue: r.importValue }));
+
+  let latest: MarketLatest = null;
+  if (withData.length > 0) {
+    const current = withData[withData.length - 1];
+    const previous = [...withData].reverse().find((r) => r.period < current.period) ?? null;
     const growthPct =
       previous && previous.importValue
         ? ((current.importValue! - previous.importValue) / previous.importValue) * 100
         : null;
-
-    markets.push({
-      country,
+    latest = {
       year: current.period,
       importValue: current.importValue,
       prevYear: previous?.period ?? null,
       growthPct,
-    });
+    };
   }
-
-  markets.sort((a, b) => (b.importValue ?? -1) - (a.importValue ?? -1));
 
   const updatedAt = rows.reduce((max, r) => {
     const t = r.fetchedAt ? new Date(r.fetchedAt).getTime() : 0;
@@ -65,8 +71,19 @@ export async function GET() {
   }, 0);
 
   return NextResponse.json({
-    markets,
+    code,
+    country,
+    reporterCode,
     hsCode: HS_STEEL_DOORS,
+    latest,
+    series,
     updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
   });
 }
+
+type MarketLatest = {
+  year: number;
+  importValue: number | null;
+  prevYear: number | null;
+  growthPct: number | null;
+} | null;

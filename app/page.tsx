@@ -5,7 +5,6 @@ import type {
   Config,
   ProspectRow,
   ProspectsResponse,
-  MarketRow,
   MarketResponse,
   GeoResponse,
   CitiesResponse,
@@ -61,8 +60,9 @@ export default function Console() {
     return res;
   }, []);
 
-  const loadMarket = useCallback(async () => {
-    const m: MarketResponse = await (await fetch("/api/market")).json();
+  const loadMarket = useCallback(async (code: string) => {
+    if (!code) return;
+    const m: MarketResponse = await (await fetch(`/api/market?country=${code}`)).json();
     setMarket(m);
   }, []);
 
@@ -104,12 +104,12 @@ export default function Console() {
         const list = r.cities ?? [];
         setCities(list);
         setActiveCities(Object.fromEntries(list.map((c) => [c.city, true])));
+        const m: MarketResponse = await (await fetch(`/api/market?country=${startCountry}`)).json();
+        setMarket(m);
       }
 
       const res: ProspectsResponse = await (await fetch("/api/prospects")).json();
       setData(res);
-      const m: MarketResponse = await (await fetch("/api/market")).json();
-      setMarket(m);
     })();
   }, []);
 
@@ -121,6 +121,10 @@ export default function Console() {
     () => cities.filter((c) => activeCities[c.city]),
     [cities, activeCities]
   );
+  const selectedCountry = useMemo(
+    () => continentCountries.find((c) => c.code === countryCode) ?? null,
+    [continentCountries, countryCode]
+  );
   const filterCountries = useMemo(
     () => ["All", ...(data?.allCountries ?? [])],
     [data]
@@ -131,10 +135,12 @@ export default function Console() {
     const country = geo ? pickCountry(geo, code) : "";
     setCountryCode(country);
     loadCities(country);
+    loadMarket(country);
   };
   const onCountry = (code: string) => {
     setCountryCode(code);
     loadCities(code);
+    loadMarket(code);
   };
 
   const toggleCity = (city: string) =>
@@ -192,19 +198,27 @@ export default function Console() {
   }, []);
 
   async function refreshMarket() {
+    if (!selectedCountry?.isoNumeric) {
+      setMarketMsg("This country has no UN numeric code, so Comtrade data isn't available.");
+      return;
+    }
     setMarketBusy(true);
-    setMarketMsg("Fetching steel-door import data from UN Comtrade…");
+    setMarketMsg(`Fetching ${selectedCountry.name} steel-door import data…`);
     try {
-      const res = await fetch("/api/market/refresh", { method: "POST" });
+      const res = await fetch("/api/market/refresh", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reporterCode: selectedCountry.isoNumeric, country: selectedCountry.name }),
+      });
       const d = await res.json();
       if (!res.ok) return setMarketMsg(d.error || "Refresh failed.");
       if (!d.upserted) return setMarketMsg(d.note || "No data returned.");
       const yrs = d.years ?? [];
       setMarketMsg(
-        `Updated ${d.upserted} rows across ${d.countries?.length ?? 0} countries` +
-          (yrs.length ? ` (years ${yrs[0]}–${yrs[yrs.length - 1]}).` : ".")
+        `Updated ${d.upserted} year(s) for ${d.country}` +
+          (yrs.length ? ` (${yrs[0]}–${yrs[yrs.length - 1]}).` : ".")
       );
-      await loadMarket();
+      await loadMarket(countryCode);
     } catch {
       setMarketMsg("Could not reach the server. Please try again.");
     } finally {
@@ -386,7 +400,11 @@ export default function Console() {
             <h2 className="text-[11px] uppercase tracking-[0.16em] text-mute">
               Market — steel door imports (HS 730830)
             </h2>
-            <button onClick={refreshMarket} disabled={marketBusy} className="btn btn-ghost btn-sm">
+            <button
+              onClick={refreshMarket}
+              disabled={marketBusy || !selectedCountry?.isoNumeric}
+              className="btn btn-ghost btn-sm"
+            >
               {marketBusy ? "Refreshing…" : "Refresh data"}
             </button>
             {marketMsg ? (
@@ -398,21 +416,43 @@ export default function Console() {
             )}
           </div>
 
-          {market && market.markets.some((m) => m.importValue != null) ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {market.markets.map((m, i) => (
-                <MarketCard key={m.country} m={m} top={i === 0 && m.importValue != null} />
-              ))}
+          {market?.latest ? (
+            <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-3">
+              <div>
+                <div className="text-xs font-semibold text-ink">{market.country}</div>
+                <div className="mt-0.5 font-mono text-2xl">{fmtUSD(market.latest.importValue)}</div>
+                <div className="text-[11px] text-mute">
+                  {market.latest.year}
+                  {market.latest.prevYear != null && (
+                    <>
+                      {" · vs "}
+                      {market.latest.prevYear} <Growth pct={market.latest.growthPct} />
+                    </>
+                  )}
+                </div>
+              </div>
+              {market.series.length > 1 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-mute">
+                  {market.series.map((p) => (
+                    <span key={p.period} className="font-mono">
+                      {p.period}: {fmtUSD(p.importValue)}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           ) : (
             <p className="mt-2 text-[11px] text-mute">
-              No market data yet. Click “Refresh data” to pull the latest steel-door import figures from UN Comtrade.
+              No steel-door import data for {selectedCountry?.name ?? "this country"} yet.
+              {selectedCountry?.isoNumeric
+                ? " Click “Refresh data” to pull it from UN Comtrade."
+                : " (This country has no UN numeric code, so Comtrade data isn’t available.)"}
             </p>
           )}
 
           <p className="mt-2.5 text-[10px] text-mute">
-            Imports of HS&nbsp;730830 (steel doors &amp; frames), USD, source UN Comtrade.
-            Ranked biggest market first; trade data typically lags 1–2 years.
+            Imports of HS&nbsp;730830 (steel doors &amp; frames) for the selected country,
+            USD, source UN Comtrade. Trade data typically lags 1–2 years.
           </p>
         </section>
 
@@ -488,27 +528,6 @@ function Growth({ pct }: { pct: number | null }) {
     <span className={up ? "text-status-replied" : "text-status-nofit"}>
       {up ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
     </span>
-  );
-}
-
-function MarketCard({ m, top }: { m: MarketRow; top: boolean }) {
-  return (
-    <div className={`min-w-[150px] flex-1 border bg-white px-3 py-2 ${top ? "border-ember" : "border-line"}`}>
-      <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-ink">{m.country}</div>
-        {top && <span className="text-[9px] font-bold uppercase tracking-wider text-ember-dk">top market</span>}
-      </div>
-      <div className="mt-0.5 font-mono text-base">{fmtUSD(m.importValue)}</div>
-      <div className="text-[11px] text-mute">
-        {m.year ?? "no data"}
-        {m.prevYear != null && (
-          <>
-            {" · vs "}
-            {m.prevYear} <Growth pct={m.growthPct} />
-          </>
-        )}
-      </div>
-    </div>
   );
 }
 

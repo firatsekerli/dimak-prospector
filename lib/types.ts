@@ -45,17 +45,20 @@ export type GeoResponse = { continents: Continent[] };
 export type CityRow = { city: string; adminName: string; population: number | null };
 export type CitiesResponse = { country: string; cities: CityRow[] };
 
-// v2 — steel-door import market intelligence (GET /api/market)
-export type MarketRow = {
-  country: string;
-  year: number | null; // latest year with data
-  importValue: number | null; // USD
-  prevYear: number | null; // year used for the growth comparison
-  growthPct: number | null; // YoY % vs prevYear
-};
+// v2/v3 — steel-door import market intelligence for the selected country
+export type MarketPoint = { period: number; importValue: number | null };
 
 export type MarketResponse = {
-  markets: MarketRow[]; // ranked by importValue desc
+  code: string; // ISO2
+  country: string; // display name
+  reporterCode: number | null; // UN M49 (null if unavailable)
   hsCode: string;
-  updatedAt: string | null; // max fetched_at, ISO
+  latest: {
+    year: number;
+    importValue: number | null;
+    prevYear: number | null;
+    growthPct: number | null;
+  } | null;
+  series: MarketPoint[]; // ascending by year
+  updatedAt: string | null;
 };
