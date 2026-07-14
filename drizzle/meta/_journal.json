@@ -36,6 +36,13 @@
       "when": 1784044212593,
       "tag": "0004_content_refreshed_at",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784053411710,
+      "tag": "0005_drop_rating_reviews",
+      "breakpoints": true
     }
   ]
 }

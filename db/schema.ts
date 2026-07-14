@@ -1,7 +1,6 @@
 import {
   pgTable,
   text,
-  real,
   integer,
   timestamp,
   boolean,
@@ -26,8 +25,6 @@ export const prospects = pgTable("prospects", {
   phone: text("phone"),
   website: text("website"),
   emails: text("emails"), // found addresses joined by " | "
-  rating: real("rating"),
-  reviews: integer("reviews"),
   googleMapsUrl: text("google_maps_url"),
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
   notes: text("notes").notNull().default(""),

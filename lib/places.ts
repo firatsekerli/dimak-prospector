@@ -11,8 +11,6 @@ const FIELD_MASK = [
   "places.nationalPhoneNumber",
   "places.internationalPhoneNumber",
   "places.websiteUri",
-  "places.rating",
-  "places.userRatingCount",
   "places.primaryTypeDisplayName",
   "places.googleMapsUri",
   "places.businessStatus",
@@ -28,8 +26,6 @@ export interface PlaceHit {
   address: string;
   phone: string;
   website: string;
-  rating: number | null;
-  reviews: number | null;
   googleMapsUrl: string;
   businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
 }
@@ -42,8 +38,6 @@ const DETAILS_FIELD_MASK = [
   "nationalPhoneNumber",
   "internationalPhoneNumber",
   "websiteUri",
-  "rating",
-  "userRatingCount",
   "primaryTypeDisplayName",
   "googleMapsUri",
   "businessStatus",
@@ -68,8 +62,6 @@ export async function placeDetails(placeId: string, apiKey: string): Promise<Pla
     address: (p.formattedAddress as string) ?? "",
     phone: (p.internationalPhoneNumber as string) ?? (p.nationalPhoneNumber as string) ?? "",
     website: (p.websiteUri as string) ?? "",
-    rating: typeof p.rating === "number" ? p.rating : null,
-    reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
     googleMapsUrl: (p.googleMapsUri as string) ?? "",
     businessStatus: (p.businessStatus as string) ?? "",
   };
@@ -131,8 +123,6 @@ export async function placesSearch(
           (p.nationalPhoneNumber as string) ??
           "",
         website: (p.websiteUri as string) ?? "",
-        rating: typeof p.rating === "number" ? p.rating : null,
-        reviews: typeof p.userRatingCount === "number" ? p.userRatingCount : null,
         googleMapsUrl: (p.googleMapsUri as string) ?? "",
         businessStatus: (p.businessStatus as string) ?? "",
       });

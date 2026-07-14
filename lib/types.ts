@@ -20,8 +20,6 @@ export type ProspectRow = {
   phone: string | null;
   website: string | null;
   emails: string | null;
-  rating: number | null;
-  reviews: number | null;
   googleMapsUrl: string | null;
   status: string;
   notes: string;

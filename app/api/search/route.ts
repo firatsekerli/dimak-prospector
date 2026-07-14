@@ -14,7 +14,7 @@ export const maxDuration = 60; // one city + up to 3 paginated pages (~2s each)
  * stored country name via the geo cache.
  *
  * Upsert rules (preserved from reference/app.py): merge segment tags, refresh
- * phone/website/rating/reviews, never overwrite status or notes.
+ * phone/website, never overwrite status or notes.
  */
 export async function POST(request: Request) {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
@@ -82,8 +82,6 @@ export async function POST(request: Request) {
       phone: h.phone,
       website: h.website,
       emails: "",
-      rating: h.rating,
-      reviews: h.reviews,
       googleMapsUrl: h.googleMapsUrl,
       source: "Google Places",
     });
@@ -114,8 +112,6 @@ export async function POST(request: Request) {
         )`,
         phone: sql`excluded.phone`,
         website: sql`excluded.website`,
-        rating: sql`excluded.rating`,
-        reviews: sql`excluded.reviews`,
         updatedAt: sql`now()`,
         contentRefreshedAt: sql`now()`, // re-find counts as a fresh fetch
         // status and notes intentionally omitted — never clobbered on a re-find.

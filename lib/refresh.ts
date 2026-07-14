@@ -63,8 +63,6 @@ export async function refreshProspects(
         address: d.address,
         phone: d.phone,
         website: d.website,
-        rating: d.rating,
-        reviews: d.reviews,
         googleMapsUrl: d.googleMapsUrl,
         updatedAt: sql`now()`,
         contentRefreshedAt: sql`now()`,
