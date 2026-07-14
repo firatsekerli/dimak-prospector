@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     );
   }
 
-  let body: { reporterCode?: number; country?: string };
+  let body: { reporterCode?: number; country?: string; hsCode?: string };
   try {
     body = await request.json();
   } catch {
@@ -30,11 +30,15 @@ export async function POST(request: Request) {
 
   const reporterCode = Number(body.reporterCode);
   const country = (body.country ?? "").trim();
+  const hsCode = (body.hsCode ?? HS_STEEL_DOORS).toString().trim();
   if (!Number.isInteger(reporterCode) || reporterCode <= 0) {
     return NextResponse.json({ error: "A valid reporterCode is required." }, { status: 400 });
   }
   if (!country) {
     return NextResponse.json({ error: "A country name is required." }, { status: 400 });
+  }
+  if (!/^\d{2,6}$/.test(hsCode)) {
+    return NextResponse.json({ error: "Product code must be a 2–6 digit HS code." }, { status: 400 });
   }
 
   const thisYear = new Date().getFullYear();
@@ -42,7 +46,7 @@ export async function POST(request: Request) {
 
   let records;
   try {
-    records = await fetchImportsForReporter(apiKey, reporterCode, years);
+    records = await fetchImportsForReporter(apiKey, reporterCode, years, hsCode);
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Comtrade error";
     if (msg.includes("429")) {
@@ -67,7 +71,7 @@ export async function POST(request: Request) {
     country,
     reporterCode,
     period: r.period,
-    hsCode: HS_STEEL_DOORS,
+    hsCode,
     importValue: r.importValue,
     quantity: r.quantity,
     isMirror: false,
@@ -90,5 +94,5 @@ export async function POST(request: Request) {
       },
     });
 
-  return NextResponse.json({ upserted: values.length, country, years });
+  return NextResponse.json({ upserted: values.length, country, years, hsCode });
 }

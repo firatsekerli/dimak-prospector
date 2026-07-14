@@ -53,6 +53,7 @@ export default function Console() {
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
   const [market, setMarket] = useState<MarketResponse | null>(null);
+  const [hsCode, setHsCode] = useState("730830");
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState("");
   const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -64,9 +65,9 @@ export default function Console() {
     return res;
   }, []);
 
-  const loadMarket = useCallback(async (code: string) => {
+  const loadMarket = useCallback(async (code: string, hs: string) => {
     if (!code) return;
-    const m: MarketResponse = await (await fetch(`/api/market?country=${code}`)).json();
+    const m: MarketResponse = await (await fetch(`/api/market?country=${code}&hsCode=${hs}`)).json();
     setMarket(m);
   }, []);
 
@@ -168,11 +169,16 @@ export default function Console() {
     setActiveCities({});
     setMarket(null);
   };
+  const applyHs = () => {
+    const hs = hsCode.trim();
+    if (countryCode && /^\d{2,6}$/.test(hs)) loadMarket(countryCode, hs);
+  };
+
   const onCountry = (code: string) => {
     setCountryCode(code);
     if (code) {
       loadCities(code);
-      loadMarket(code);
+      loadMarket(code, hsCode.trim());
       // Also show this country's already-collected prospects in the table.
       const name = continentCountries.find((c) => c.code === code)?.name ?? "";
       const next = { ...filters, country: name || "All" };
@@ -274,13 +280,18 @@ export default function Console() {
       setMarketMsg("This country has no UN numeric code, so Comtrade data isn't available.");
       return;
     }
+    const hs = hsCode.trim();
+    if (!/^\d{2,6}$/.test(hs)) {
+      setMarketMsg("Product code must be a 2–6 digit HS code.");
+      return;
+    }
     setMarketBusy(true);
-    setMarketMsg(`Fetching ${selectedCountry.name} steel-door import data…`);
+    setMarketMsg(`Fetching ${selectedCountry.name} imports (HS ${hs})…`);
     try {
       const res = await fetch("/api/market/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporterCode: selectedCountry.isoNumeric, country: selectedCountry.name }),
+        body: JSON.stringify({ reporterCode: selectedCountry.isoNumeric, country: selectedCountry.name, hsCode: hs }),
       });
       const d = await res.json();
       if (!res.ok) return setMarketMsg(d.error || "Refresh failed.");
@@ -290,7 +301,7 @@ export default function Console() {
         `Updated ${d.upserted} year(s) for ${d.country}` +
           (yrs.length ? ` (${yrs[0]}–${yrs[yrs.length - 1]}).` : ".")
       );
-      await loadMarket(countryCode);
+      await loadMarket(countryCode, hs);
     } catch {
       setMarketMsg("Could not reach the server. Please try again.");
     } finally {
@@ -494,11 +505,22 @@ export default function Console() {
         <section className="mb-4 border border-line bg-panel px-[18px] py-4">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-[11px] uppercase tracking-[0.16em] text-mute">
-              Market — steel door imports (HS 730830)
+              Market — import statistics
             </h2>
+            <label className="clickable flex items-center gap-1.5 text-xs text-steel" title="UN HS product code (2–6 digits). 730830 = steel doors & frames.">
+              Product code (HS)
+              <input
+                value={hsCode}
+                onChange={(e) => setHsCode(e.target.value)}
+                onBlur={applyHs}
+                onKeyDown={(e) => e.key === "Enter" && applyHs()}
+                placeholder="730830"
+                className="control control-sm w-[90px]"
+              />
+            </label>
             <button
               onClick={refreshMarket}
-              disabled={marketBusy || !countryCode || !selectedCountry?.isoNumeric}
+              disabled={marketBusy || !countryCode || !selectedCountry?.isoNumeric || !/^\d{2,6}$/.test(hsCode.trim())}
               className="btn btn-ghost btn-sm"
             >
               {marketBusy ? "Refreshing…" : "Refresh data"}
@@ -543,7 +565,7 @@ export default function Console() {
             </p>
           ) : (
             <p className="mt-2 text-[11px] text-mute">
-              No steel-door import data for {selectedCountry?.name ?? "this country"} yet.
+              No import data for {selectedCountry?.name ?? "this country"} (HS {hsCode}) yet.
               {selectedCountry?.isoNumeric
                 ? " Click “Refresh data” to pull it from UN Comtrade."
                 : " (This country has no UN numeric code, so Comtrade data isn’t available.)"}
@@ -551,8 +573,9 @@ export default function Console() {
           )}
 
           <p className="mt-2.5 text-[10px] text-mute">
-            Imports of HS&nbsp;730830 (steel doors &amp; frames) for the selected country,
-            USD, source UN Comtrade. Trade data typically lags 1–2 years.
+            Import statistics from UN Comtrade for the selected country and product code
+            (HS). Change the code to research any product (e.g. 730830 = steel doors).
+            Trade data typically lags 1–2 years.
           </p>
         </section>
 

@@ -39,13 +39,18 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
  * the free-tier burst rate limit can't be tripped. Retries a couple of times
  * with backoff if a 429 does occur (e.g. a lingering limit window).
  */
-async function callComtrade(apiKey: string, reporterCodes: number[], years: number[]): Promise<RawRow[]> {
+async function callComtrade(
+  apiKey: string,
+  reporterCodes: number[],
+  years: number[],
+  hsCode: string = HS_STEEL_DOORS
+): Promise<RawRow[]> {
   const url = new URL(BASE);
   url.searchParams.set("reporterCode", reporterCodes.join(","));
   url.searchParams.set("period", years.join(","));
   url.searchParams.set("partnerCode", "0"); // World
   url.searchParams.set("flowCode", "M"); // imports
-  url.searchParams.set("cmdCode", HS_STEEL_DOORS);
+  url.searchParams.set("cmdCode", hsCode);
   url.searchParams.set("subscription-key", apiKey);
 
   const maxAttempts = 3;
@@ -80,15 +85,16 @@ export interface ImportYear {
 }
 
 /**
- * Fetch steel-door imports for ONE reporter across the given years (single call).
+ * Fetch imports of `hsCode` for ONE reporter across the given years (single call).
  * One record per year — the World aggregate (largest value if breakdowns exist).
  */
 export async function fetchImportsForReporter(
   apiKey: string,
   reporterCode: number,
-  years: number[]
+  years: number[],
+  hsCode: string = HS_STEEL_DOORS
 ): Promise<ImportYear[]> {
-  const rows = await callComtrade(apiKey, [reporterCode], years);
+  const rows = await callComtrade(apiKey, [reporterCode], years, hsCode);
 
   const best = new Map<number, RawRow>();
   for (const row of rows) {

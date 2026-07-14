@@ -11,9 +11,14 @@ export const dynamic = "force-dynamic";
  * import series, latest value, and YoY growth. Reads Postgres only.
  */
 export async function GET(request: Request) {
-  const code = (new URL(request.url).searchParams.get("country") ?? "").toUpperCase();
+  const params = new URL(request.url).searchParams;
+  const code = (params.get("country") ?? "").toUpperCase();
+  const hsCode = (params.get("hsCode") ?? HS_STEEL_DOORS).trim();
   if (!/^[A-Z]{2}$/.test(code)) {
     return NextResponse.json({ error: "A 2-letter country code is required." }, { status: 400 });
+  }
+  if (!/^\d{2,6}$/.test(hsCode)) {
+    return NextResponse.json({ error: "Product code must be a 2–6 digit HS code." }, { status: 400 });
   }
 
   const db = getDb();
@@ -25,7 +30,7 @@ export async function GET(request: Request) {
     code,
     country,
     reporterCode,
-    hsCode: HS_STEEL_DOORS,
+    hsCode,
     latest: null,
     series: [],
     updatedAt: null,
@@ -38,7 +43,7 @@ export async function GET(request: Request) {
     .where(
       and(
         eq(steelDoorImports.reporterCode, reporterCode),
-        eq(steelDoorImports.hsCode, HS_STEEL_DOORS)
+        eq(steelDoorImports.hsCode, hsCode)
       )
     );
 
@@ -74,7 +79,7 @@ export async function GET(request: Request) {
     code,
     country,
     reporterCode,
-    hsCode: HS_STEEL_DOORS,
+    hsCode,
     latest,
     series,
     updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
