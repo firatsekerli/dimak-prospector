@@ -322,6 +322,14 @@ export default function Console() {
             </table>
           </div>
         )}
+
+        {rows.length > 0 && (
+          <p className="mt-2.5 text-[11px] text-mute">
+            Phone numbers are shown exactly as Google Places provides them. The
+            WhatsApp link is generated from that number and may not be registered
+            on WhatsApp.
+          </p>
+        )}
       </main>
     </>
   );
@@ -397,7 +405,14 @@ function Row({
         {r.phone}
         <div className="mt-1 flex gap-2">
           {r.wa && (
-            <a href={r.wa} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+            <a
+              href={r.wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="WhatsApp link generated from the phone number above (via Google Places). The number may not be registered on WhatsApp."
+              aria-label="Open WhatsApp for this phone number (may not be registered on WhatsApp)"
+              className="text-ember-dk hover:underline"
+            >
               WhatsApp
             </a>
           )}
