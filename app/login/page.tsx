@@ -34,7 +34,7 @@ export default function Login() {
     <>
       <header className="flex items-baseline gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
         <h1 className="text-[17px] font-bold uppercase tracking-[0.14em]">DİMAK Prospector</h1>
-        <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Gulf fire door lead pipeline</span>
+        <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Fire door lead pipeline</span>
       </header>
 
       <main className="mx-auto flex w-full max-w-[420px] flex-col px-[22px] pt-16">

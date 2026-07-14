@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "DİMAK Prospector",
-  description: "Gulf fire door lead pipeline for DİMAK Kapı.",
+  description: "Fire door lead pipeline for DİMAK Kapı.",
 };
 
 export default function RootLayout({

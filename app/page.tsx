@@ -32,7 +32,7 @@ const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", status: "All"
 export default function Console() {
   const [config, setConfig] = useState<Config | null>(null);
   const [geo, setGeo] = useState<GeoResponse | null>(null);
-  const [continentCode, setContinentCode] = useState("AS");
+  const [continentCode, setContinentCode] = useState("");
   const [countryCode, setCountryCode] = useState("");
   const [cities, setCities] = useState<CityRow[]>([]);
   const [citiesBusy, setCitiesBusy] = useState(false);
@@ -79,37 +79,15 @@ export default function Console() {
     }
   }, []);
 
-  // Pick a sensible default country for a continent (UAE if present).
-  const pickCountry = (g: GeoResponse, continent: string) => {
-    const list = g.continents.find((c) => c.code === continent)?.countries ?? [];
-    return list.find((c) => c.code === "AE")?.code ?? list[0]?.code ?? "";
-  };
-
+  // Only load config + geography on mount. No continent/country selected, no
+  // filters applied, empty list — the user searches or filters to populate.
   useEffect(() => {
     (async () => {
       const cfg: Config = await (await fetch("/api/config")).json();
       setConfig(cfg);
       setSegment(cfg.segments[0] ?? "");
-
       const g: GeoResponse = await (await fetch("/api/geo")).json();
       setGeo(g);
-      const startContinent = g.continents.some((c) => c.code === "AS")
-        ? "AS"
-        : (g.continents[0]?.code ?? "AS");
-      setContinentCode(startContinent);
-      const startCountry = pickCountry(g, startContinent);
-      setCountryCode(startCountry);
-      if (startCountry) {
-        const r: CitiesResponse = await (await fetch(`/api/geo/cities?country=${startCountry}`)).json();
-        const list = r.cities ?? [];
-        setCities(list);
-        setActiveCities(Object.fromEntries(list.map((c) => [c.city, true])));
-        const m: MarketResponse = await (await fetch(`/api/market?country=${startCountry}`)).json();
-        setMarket(m);
-      }
-
-      const res: ProspectsResponse = await (await fetch("/api/prospects")).json();
-      setData(res);
     })();
   }, []);
 
@@ -129,18 +107,33 @@ export default function Console() {
     () => ["All", ...(data?.allCountries ?? [])],
     [data]
   );
+  const exportFilteredHref = useMemo(() => {
+    const p = new URLSearchParams();
+    if (filters.country !== "All") p.set("country", filters.country);
+    if (filters.segment !== "All") p.set("segment", filters.segment);
+    if (filters.status !== "All") p.set("status", filters.status);
+    if (filters.q) p.set("q", filters.q);
+    const s = p.toString();
+    return "/api/export" + (s ? "?" + s : "");
+  }, [filters]);
 
   const onContinent = (code: string) => {
     setContinentCode(code);
-    const country = geo ? pickCountry(geo, code) : "";
-    setCountryCode(country);
-    loadCities(country);
-    loadMarket(country);
+    setCountryCode("");
+    setCities([]);
+    setActiveCities({});
+    setMarket(null);
   };
   const onCountry = (code: string) => {
     setCountryCode(code);
-    loadCities(code);
-    loadMarket(code);
+    if (code) {
+      loadCities(code);
+      loadMarket(code);
+    } else {
+      setCities([]);
+      setActiveCities({});
+      setMarket(null);
+    }
   };
 
   const toggleCity = (city: string) =>
@@ -275,7 +268,7 @@ export default function Console() {
     <>
       <header className="flex items-baseline gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
         <h1 className="text-[17px] font-bold uppercase tracking-[0.14em]">DİMAK Prospector</h1>
-        <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Gulf fire door lead pipeline</span>
+        <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Fire door lead pipeline</span>
         <button
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" });
@@ -342,6 +335,7 @@ export default function Console() {
             <div>
               <label htmlFor="continent" className={label}>Continent</label>
               <select id="continent" value={continentCode} onChange={(e) => onContinent(e.target.value)} className="control min-w-[150px]">
+                <option value="">Select continent</option>
                 {geo?.continents.map((c) => (
                   <option key={c.code} value={c.code}>{c.name}</option>
                 ))}
@@ -349,7 +343,14 @@ export default function Console() {
             </div>
             <div>
               <label htmlFor="country" className={label}>Country</label>
-              <select id="country" value={countryCode} onChange={(e) => onCountry(e.target.value)} className="control min-w-[220px]">
+              <select
+                id="country"
+                value={countryCode}
+                onChange={(e) => onCountry(e.target.value)}
+                disabled={!continentCode}
+                className="control min-w-[220px] disabled:opacity-50"
+              >
+                <option value="">{continentCode ? "Select country" : "—"}</option>
                 {continentCountries.map((c) => (
                   <option key={c.code} value={c.code}>{c.name}</option>
                 ))}
@@ -365,7 +366,9 @@ export default function Console() {
               {" / "}
               <button type="button" onClick={() => setAllCities(false)} className="text-mute underline-offset-2 hover:underline">none</button>
             </div>
-            {citiesBusy ? (
+            {!countryCode ? (
+              <div className="text-xs text-mute">Pick a country to list its cities.</div>
+            ) : citiesBusy ? (
               <div className="text-xs text-mute">Loading cities…</div>
             ) : cities.length === 0 ? (
               <div className="text-xs text-mute">No cities found for this country.</div>
@@ -402,7 +405,7 @@ export default function Console() {
             </h2>
             <button
               onClick={refreshMarket}
-              disabled={marketBusy || !selectedCountry?.isoNumeric}
+              disabled={marketBusy || !countryCode || !selectedCountry?.isoNumeric}
               className="btn btn-ghost btn-sm"
             >
               {marketBusy ? "Refreshing…" : "Refresh data"}
@@ -441,6 +444,10 @@ export default function Console() {
                 </div>
               )}
             </div>
+          ) : !countryCode ? (
+            <p className="mt-2 text-[11px] text-mute">
+              Select a country above to see its steel-door imports.
+            </p>
           ) : (
             <p className="mt-2 text-[11px] text-mute">
               No steel-door import data for {selectedCountry?.name ?? "this country"} yet.
@@ -473,13 +480,16 @@ export default function Console() {
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
           </div>
-          <a href="/api/export" className="btn btn-ghost">Export to Excel</a>
+          <a href="/api/export" className="btn btn-ghost">Export all</a>
+          <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
         </div>
 
         {/* Results table */}
         {rows.length === 0 ? (
           <div className="border border-line bg-panel p-10 text-center text-mute">
-            {data ? "No prospects match. Adjust the filters or run a search." : "Loading…"}
+            {data
+              ? "No prospects match. Adjust the filters or run a search."
+              : "Run a search, or apply a filter, to see prospects."}
           </div>
         ) : (
           <div className="overflow-x-auto border border-line bg-panel">
@@ -585,11 +595,18 @@ function Row({
       <td className={cell}>
         <div className="font-semibold">{r.company}</div>
         {r.category && <div className="text-xs text-mute">{r.category}</div>}
-        {r.googleMapsUrl && (
-          <a href={r.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-ember-dk hover:underline">
-            map
-          </a>
-        )}
+        <div className="mt-0.5 flex gap-2 text-xs">
+          {r.googleMapsUrl && (
+            <a href={r.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+              map
+            </a>
+          )}
+          {r.website && (
+            <a href={r.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+              site
+            </a>
+          )}
+        </div>
       </td>
       <td className={`${cell} text-xs text-mute`}>{r.segment}</td>
       <td className={cell}>
@@ -600,25 +617,18 @@ function Row({
       {/* Contact details: phone + WhatsApp/site + email in one column */}
       <td className={cell}>
         <div className="font-mono text-xs">{r.phone || <span className="text-mute">—</span>}</div>
-        {(r.wa || r.website) && (
-          <div className="mt-1 flex gap-2 text-xs">
-            {r.wa && (
-              <a
-                href={r.wa}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="WhatsApp link generated from the phone number above (via Google Places). The number may not be registered on WhatsApp."
-                aria-label="Open WhatsApp for this phone number (may not be registered on WhatsApp)"
-                className="text-ember-dk hover:underline"
-              >
-                WhatsApp
-              </a>
-            )}
-            {r.website && (
-              <a href={r.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
-                site
-              </a>
-            )}
+        {r.wa && (
+          <div className="mt-1 text-xs">
+            <a
+              href={r.wa}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="WhatsApp link generated from the phone number above (via Google Places). The number may not be registered on WhatsApp."
+              aria-label="Open WhatsApp for this phone number (may not be registered on WhatsApp)"
+              className="text-ember-dk hover:underline"
+            >
+              WhatsApp
+            </a>
           </div>
         )}
         <div className="mt-1.5 font-mono text-xs">
@@ -642,10 +652,7 @@ function Row({
         </div>
       </td>
 
-      <td className={`${cell} font-mono text-xs`}>
-        {r.rating ?? ""}
-        <div className="text-mute">{r.reviews ?? 0}</div>
-      </td>
+      <td className={`${cell} font-mono text-xs`}>{r.rating ?? ""}</td>
       <td className={cell}>
         <select
           value={r.status}

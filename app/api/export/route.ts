@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import ExcelJS from "exceljs";
-import { asc } from "drizzle-orm";
+import { and, asc, eq, ilike, like, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { prospects } from "@/db/schema";
 import { cleanEmailsField } from "@/lib/email";
@@ -27,12 +27,29 @@ const COLUMNS: { header: string; key: string; width: number }[] = [
   { header: "Maps URL", key: "googleMapsUrl", width: 30 },
 ];
 
-/** GET /api/export — streams an .xlsx of all prospects. */
-export async function GET() {
+/**
+ * GET /api/export — streams an .xlsx. With no query params it exports all
+ * prospects; with country/segment/status/q it exports the filtered view (same
+ * filters as /api/prospects).
+ */
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const country = searchParams.get("country");
+  const segment = searchParams.get("segment");
+  const status = searchParams.get("status");
+  const q = searchParams.get("q");
+
+  const conditions = [];
+  if (country && country !== "All") conditions.push(eq(prospects.country, country));
+  if (segment && segment !== "All") conditions.push(like(prospects.segment, `%${segment}%`));
+  if (status && status !== "All") conditions.push(eq(prospects.status, status));
+  if (q) conditions.push(or(ilike(prospects.company, `%${q}%`), ilike(prospects.city, `%${q}%`)));
+
   const db = getDb();
   const rows = await db
     .select()
     .from(prospects)
+    .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(prospects.country), asc(prospects.city), asc(prospects.company));
 
   const wb = new ExcelJS.Workbook();
