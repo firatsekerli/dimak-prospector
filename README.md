@@ -45,20 +45,66 @@ See `.env.example` for the template.
    Phase 1 minimal page.
 4. Vercel builds and deploys on every push to the default branch.
 
+## Access control (password gate)
+
+All pages and `/api/*` routes are protected by Next.js middleware (`middleware.ts`),
+except `/login` and the auth routes. Unauthenticated page requests redirect to
+`/login`; unauthenticated API requests get `401`. This is a single shared
+password (not user accounts) — its job is to stop strangers who find the URL
+from triggering billed Google Places calls.
+
+- `/login` posts the password to `/api/auth/login`, which compares it to
+  `APP_PASSWORD` and, on success, sets a signed **http-only** cookie
+  (HMAC-SHA256 over an expiry, signed with `AUTH_SECRET`, 30-day TTL).
+- Middleware verifies that cookie on every request. A tampered or expired
+  cookie is rejected. "Log out" (top-right) clears it via `/api/auth/logout`.
+
+**Generate `AUTH_SECRET`** (a long random string) with either:
+
+```bash
+openssl rand -base64 32
+# or
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+Set `APP_PASSWORD` to a strong password of your choice. Put both in Vercel's
+environment variables (and `.env.local` for local dev). If either is missing,
+login returns `500` and the gate stays closed.
+
 ## Cost and safety notes
 
-- The Google Places API is billed per request, and the contact fields (phone,
-  website) sit in a higher pricing tier. Set a **budget alert** and a **daily
-  quota** on the key in Google Cloud so a mistake or abuse cannot run up a bill.
-- The app is protected by a single shared password so a stranger who finds the
-  URL cannot trigger billed searches. Keep that password private.
+The Google Places API is billed per request, and the contact fields (phone,
+website) sit in a higher pricing tier. Configure both of these in Google Cloud
+so a mistake or abuse cannot run up a bill:
+
+- **Daily quota** — APIs & Services → **Places API (New)** → **Quotas & System
+  Limits** → filter for **`SearchText` requests per day** (the only method this
+  app calls) → set a low cap (e.g. `1,000/day`). One full ten-city search is
+  roughly 30 requests.
+- **Budget alert** — **Billing → Budgets & alerts → Create budget** (e.g.
+  `$10/month`, alerts at 50 / 90 / 100%).
+- Restrict the API key to **Places API (New)** (APIs & Services → Credentials →
+  the key → API restrictions), and keep it server-side only — it is never
+  exposed to the browser.
+- The password gate above is the other half: it keeps the billed endpoints off
+  the public internet. Keep the password private.
+
+Email enrichment fetches company **websites** (not Google), so it costs nothing
+against the Places quota.
 
 ## Project layout
 
 ```
-app/                 Next.js App Router (pages + API route handlers)
-  api/health/        serverless health check
-reference/           the original Flask prototype (source of truth for behavior)
-CLAUDE.md            authoritative build spec + phased plan
-.env.example         environment variable template
+app/                    Next.js App Router
+  api/                  route handlers: config, search, prospects(+update),
+                        enrich, export, health, auth/(login|logout)
+  login/                the password gate page
+  page.tsx              the console (search, table, filters, editing)
+middleware.ts           auth gate for all pages + /api/* (except login/auth)
+db/                     Drizzle schema + Neon client
+drizzle/                generated SQL migration
+lib/                    config, places, email, format, auth, types
+reference/              the original Flask prototype (source of truth)
+CLAUDE.md               authoritative build spec + phased plan
+.env.example            environment variable template
 ```

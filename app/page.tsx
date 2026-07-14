@@ -171,6 +171,15 @@ export default function Console() {
       <header className="flex items-baseline gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
         <h1 className="text-[17px] font-bold uppercase tracking-[0.14em]">Dimak Prospector</h1>
         <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Gulf fire door lead pipeline</span>
+        <button
+          onClick={async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+          }}
+          className="ml-auto text-xs text-[#9aa3af] hover:text-white"
+        >
+          Log out
+        </button>
       </header>
 
       <main className="mx-auto w-full max-w-[1220px] px-[22px] pb-16 pt-5">
