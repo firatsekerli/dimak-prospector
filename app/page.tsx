@@ -103,10 +103,11 @@ export default function Console() {
     () => continentCountries.find((c) => c.code === countryCode) ?? null,
     [continentCountries, countryCode]
   );
-  const filterCountries = useMemo(
-    () => ["All", ...(data?.allCountries ?? [])],
-    [data]
-  );
+  const filterCountries = useMemo(() => {
+    const set = new Set<string>(["All", ...(data?.allCountries ?? [])]);
+    if (filters.country && filters.country !== "All") set.add(filters.country);
+    return [...set];
+  }, [data, filters.country]);
   const exportFilteredHref = useMemo(() => {
     const p = new URLSearchParams();
     if (filters.country !== "All") p.set("country", filters.country);
@@ -129,11 +130,21 @@ export default function Console() {
     if (code) {
       loadCities(code);
       loadMarket(code);
+      // Also show this country's already-collected prospects in the table.
+      const name = continentCountries.find((c) => c.code === code)?.name ?? "";
+      const next = { ...filters, country: name || "All" };
+      setFilters(next);
+      reload(next);
     } else {
       setCities([]);
       setActiveCities({});
       setMarket(null);
     }
+  };
+
+  const showAll = () => {
+    setFilters(DEFAULT_FILTERS);
+    reload(DEFAULT_FILTERS);
   };
 
   const toggleCity = (city: string) =>
@@ -480,6 +491,7 @@ export default function Console() {
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
           </div>
+          <button onClick={showAll} className="btn btn-ghost">Show all</button>
           <a href="/api/export" className="btn btn-ghost">Export all</a>
           <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
         </div>
@@ -489,7 +501,7 @@ export default function Console() {
           <div className="border border-line bg-panel p-10 text-center text-mute">
             {data
               ? "No prospects match. Adjust the filters or run a search."
-              : "Run a search, or apply a filter, to see prospects."}
+              : "Pick a country, click “Show all”, or run a search to see prospects."}
           </div>
         ) : (
           <div className="overflow-x-auto border border-line bg-panel">
