@@ -27,6 +27,8 @@ export default function Console() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [data, setData] = useState<ProspectsResponse | null>(null);
   const [enriching, setEnriching] = useState<Record<string, boolean>>({});
+  const [marketBusy, setMarketBusy] = useState(false);
+  const [marketMsg, setMarketMsg] = useState("");
   const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch prospects for a given filter set and return the response too, so
@@ -89,6 +91,32 @@ export default function Console() {
     reload(filters);
   };
   const onNotes = (placeId: string, notes: string) => save(placeId, { notes });
+
+  async function refreshMarket() {
+    setMarketBusy(true);
+    setMarketMsg("Fetching steel-door import data from UN Comtrade…");
+    try {
+      const res = await fetch("/api/market/refresh", { method: "POST" });
+      const d = await res.json();
+      if (!res.ok) {
+        setMarketMsg(d.error || "Refresh failed.");
+        return;
+      }
+      if (!d.upserted) {
+        setMarketMsg(d.note || "No data returned.");
+        return;
+      }
+      const yrs = d.years ?? [];
+      setMarketMsg(
+        `Updated ${d.upserted} rows across ${d.countries?.length ?? 0} countries` +
+          (yrs.length ? ` (years ${yrs[0]}–${yrs[yrs.length - 1]}).` : ".")
+      );
+    } catch {
+      setMarketMsg("Could not reach the server. Please try again.");
+    } finally {
+      setMarketBusy(false);
+    }
+  }
 
   // Patch a single row's emails in place (avoids a full reload per lookup).
   const patchEmails = (placeId: string, emails: string) =>
@@ -277,6 +305,27 @@ export default function Console() {
           </div>
 
           {searchMsg && <div className="mt-2.5 text-xs text-mute">{searchMsg}</div>}
+        </section>
+
+        {/* Market intelligence (v2) — ranked country strip arrives in step 3 */}
+        <section className="mb-4 rounded-lg border border-line bg-panel px-[18px] py-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <h2 className="text-[11px] uppercase tracking-[0.16em] text-mute">
+              Market — steel door imports (HS 730830)
+            </h2>
+            <button
+              onClick={refreshMarket}
+              disabled={marketBusy}
+              className="rounded-md border border-line bg-white px-3 py-1.5 text-xs font-semibold text-ink hover:border-ember hover:text-ember-dk disabled:opacity-50"
+            >
+              {marketBusy ? "Refreshing…" : "Refresh data"}
+            </button>
+            {marketMsg && <span className="text-xs text-mute">{marketMsg}</span>}
+          </div>
+          <p className="mt-2 text-[11px] text-mute">
+            Steel-door import statistics from UN Comtrade, to prioritize which markets
+            to work first. The ranked country view arrives next.
+          </p>
         </section>
 
         {/* Stats strip */}
