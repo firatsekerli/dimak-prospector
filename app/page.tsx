@@ -1,7 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Config, ProspectRow, ProspectsResponse } from "@/lib/types";
+import type {
+  Config,
+  ProspectRow,
+  ProspectsResponse,
+  MarketRow,
+  MarketResponse,
+} from "@/lib/types";
+
+const usdCompact = new Intl.NumberFormat("en", {
+  notation: "compact",
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 1,
+});
+const fmtUSD = (v: number | null) => (v == null ? "—" : usdCompact.format(v));
 
 const STATUS_TEXT: Record<string, string> = {
   New: "text-status-new",
@@ -29,7 +43,13 @@ export default function Console() {
   const [enriching, setEnriching] = useState<Record<string, boolean>>({});
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
+  const [market, setMarket] = useState<MarketResponse | null>(null);
   const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const loadMarket = useCallback(async () => {
+    const m: MarketResponse = await (await fetch("/api/market")).json();
+    setMarket(m);
+  }, []);
 
   // Fetch prospects for a given filter set and return the response too, so
   // callers (search, enrich loop) can act on the fresh rows.
@@ -49,6 +69,8 @@ export default function Console() {
       setActiveCities(Object.fromEntries(cfg.cities.map((c) => [c.city, true])));
       const res: ProspectsResponse = await (await fetch("/api/prospects")).json();
       setData(res);
+      const m: MarketResponse = await (await fetch("/api/market")).json();
+      setMarket(m);
     })();
   }, []);
 
@@ -111,6 +133,7 @@ export default function Console() {
         `Updated ${d.upserted} rows across ${d.countries?.length ?? 0} countries` +
           (yrs.length ? ` (years ${yrs[0]}–${yrs[yrs.length - 1]}).` : ".")
       );
+      await loadMarket();
     } catch {
       setMarketMsg("Could not reach the server. Please try again.");
     } finally {
@@ -320,11 +343,33 @@ export default function Console() {
             >
               {marketBusy ? "Refreshing…" : "Refresh data"}
             </button>
-            {marketMsg && <span className="text-xs text-mute">{marketMsg}</span>}
+            {marketMsg ? (
+              <span className="text-xs text-mute">{marketMsg}</span>
+            ) : (
+              market?.updatedAt && (
+                <span className="text-xs text-mute">
+                  as of {new Date(market.updatedAt).toLocaleDateString()}
+                </span>
+              )
+            )}
           </div>
-          <p className="mt-2 text-[11px] text-mute">
-            Steel-door import statistics from UN Comtrade, to prioritize which markets
-            to work first. The ranked country view arrives next.
+
+          {market && market.markets.some((m) => m.importValue != null) ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {market.markets.map((m, i) => (
+                <MarketCard key={m.country} m={m} top={i === 0 && m.importValue != null} />
+              ))}
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] text-mute">
+              No market data yet. Click “Refresh data” to pull the latest steel-door
+              import figures from UN Comtrade.
+            </p>
+          )}
+
+          <p className="mt-2 text-[10px] text-mute">
+            Imports of HS&nbsp;730830 (steel doors &amp; frames), USD, source UN Comtrade.
+            Ranked biggest market first; trade data typically lags 1–2 years.
           </p>
         </section>
 
@@ -396,6 +441,45 @@ export default function Console() {
         )}
       </main>
     </>
+  );
+}
+
+function Growth({ pct }: { pct: number | null }) {
+  if (pct == null) return <span className="text-mute">—</span>;
+  const up = pct >= 0;
+  return (
+    <span className={up ? "text-status-replied" : "text-status-nofit"}>
+      {up ? "▲" : "▼"} {Math.abs(pct).toFixed(1)}%
+    </span>
+  );
+}
+
+function MarketCard({ m, top }: { m: MarketRow; top: boolean }) {
+  return (
+    <div
+      className={`min-w-[150px] flex-1 rounded-md border bg-white px-3 py-2 ${
+        top ? "border-ember" : "border-line"
+      }`}
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-ink">{m.country}</div>
+        {top && (
+          <span className="text-[9px] font-bold uppercase tracking-wider text-ember-dk">
+            top market
+          </span>
+        )}
+      </div>
+      <div className="mt-0.5 font-mono text-base">{fmtUSD(m.importValue)}</div>
+      <div className="text-[11px] text-mute">
+        {m.year ?? "no data"}
+        {m.prevYear != null && (
+          <>
+            {" · vs "}
+            {m.prevYear} <Growth pct={m.growthPct} />
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

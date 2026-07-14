@@ -36,3 +36,18 @@ export type ProspectsResponse = {
   total: number;
   counts: Record<string, number>;
 };
+
+// v2 — steel-door import market intelligence (GET /api/market)
+export type MarketRow = {
+  country: string;
+  year: number | null; // latest year with data
+  importValue: number | null; // USD
+  prevYear: number | null; // year used for the growth comparison
+  growthPct: number | null; // YoY % vs prevYear
+};
+
+export type MarketResponse = {
+  markets: MarketRow[]; // ranked by importValue desc
+  hsCode: string;
+  updatedAt: string | null; // max fetched_at, ISO
+};
