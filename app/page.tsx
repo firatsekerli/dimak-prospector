@@ -365,50 +365,9 @@ export default function Console() {
           <h2 className="mb-3 text-[11px] uppercase tracking-[0.16em] text-mute">Find companies</h2>
 
           <div className="flex flex-wrap items-end gap-2.5">
-            <div className="min-w-[220px] flex-1">
-              <label htmlFor="keyword" className={label}>What to search for</label>
-              <input
-                id="keyword"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && runSearch()}
-                placeholder="e.g. fire door supplier"
-                className="control w-full"
-              />
-            </div>
-
-            <div>
-              <label htmlFor="segment" className={label}>Tag new results as</label>
-              <select id="segment" value={segment} onChange={(e) => setSegment(e.target.value)} className="control min-w-[190px]">
-                <option value="">Don&apos;t tag</option>
-                {segments.map((s) => (
-                  <option key={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
-            <label className="clickable flex h-[38px] items-center gap-1.5 text-[13px] text-steel" title="Fetch public emails from each company website after searching">
-              <input type="checkbox" checked={enrich} onChange={(e) => setEnrich(e.target.checked)} />
-              Look up emails <span className="text-[11px] text-mute">(slower)</span>
-            </label>
-
-            <button onClick={runSearch} disabled={searching} className="btn btn-primary">
-              {searching ? (
-                <>
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  Searching
-                </>
-              ) : (
-                "Search"
-              )}
-            </button>
-          </div>
-
-          {/* Continent -> Country */}
-          <div className="mt-3 flex flex-wrap items-end gap-2.5">
             <div>
               <label htmlFor="continent" className={label}>Continent</label>
-              <select id="continent" value={continentCode} onChange={(e) => onContinent(e.target.value)} className="control min-w-[150px]">
+              <select id="continent" value={continentCode} onChange={(e) => onContinent(e.target.value)} className="control min-w-[140px]">
                 <option value="">Select continent</option>
                 {geo?.continents.map((c) => (
                   <option key={c.code} value={c.code}>{c.name}</option>
@@ -422,7 +381,7 @@ export default function Console() {
                 value={countryCode}
                 onChange={(e) => onCountry(e.target.value)}
                 disabled={!continentCode}
-                className="control min-w-[220px] disabled:opacity-50"
+                className="control min-w-[180px] disabled:opacity-50"
               >
                 <option value="">{continentCode ? "Select country" : "—"}</option>
                 {continentCountries.map((c) => (
@@ -430,6 +389,36 @@ export default function Console() {
                 ))}
               </select>
             </div>
+            <div className="min-w-[200px] flex-1">
+              <label htmlFor="keyword" className={label}>What to search for</label>
+              <input
+                id="keyword"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && runSearch()}
+                placeholder="e.g. fire door supplier"
+                className="control w-full"
+              />
+            </div>
+            <div>
+              <label htmlFor="segment" className={label}>Tag new results as</label>
+              <select id="segment" value={segment} onChange={(e) => setSegment(e.target.value)} className="control min-w-[160px]">
+                <option value="">Don&apos;t tag</option>
+                {segments.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <button onClick={runSearch} disabled={searching} className="btn btn-primary">
+              {searching ? (
+                <>
+                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Searching
+                </>
+              ) : (
+                "Search"
+              )}
+            </button>
           </div>
 
           {/* Cities of the selected country */}
@@ -567,8 +556,8 @@ export default function Console() {
           </p>
         </section>
 
-        {/* Stats strip + actions */}
-        <div className="mb-3.5 flex flex-wrap items-center gap-2">
+        {/* Stats strip + actions (buttons aligned to the bottom) */}
+        <div className="mb-3.5 flex flex-wrap items-end gap-2">
           <Stat label="SHOWING" value={data?.total ?? 0} />
           {config?.statuses.map((s) => (
             <Stat key={s} label={s.toUpperCase()} value={data?.counts[s] ?? 0} />
@@ -593,8 +582,12 @@ export default function Console() {
           </div>
         </div>
 
-        {/* Maintenance: prune permanently-closed businesses */}
-        <div className="mb-2 flex flex-wrap items-center gap-3">
+        {/* Utility row: email-lookup toggle + prune permanently-closed */}
+        <div className="mb-2 flex flex-wrap items-center gap-4">
+          <label className="clickable flex items-center gap-1.5 text-xs text-steel" title="After a search, fetch public emails from each company website">
+            <input type="checkbox" checked={enrich} onChange={(e) => setEnrich(e.target.checked)} />
+            Look up emails after search <span className="text-mute">(slower)</span>
+          </label>
           <button
             onClick={runCleanup}
             disabled={cleanupBusy}
