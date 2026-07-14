@@ -567,28 +567,30 @@ export default function Console() {
           </p>
         </section>
 
-        {/* Stats strip */}
-        <div className="mb-3.5 flex flex-wrap gap-2">
+        {/* Stats strip + actions */}
+        <div className="mb-3.5 flex flex-wrap items-center gap-2">
           <Stat label="SHOWING" value={data?.total ?? 0} />
           {config?.statuses.map((s) => (
             <Stat key={s} label={s.toUpperCase()} value={data?.counts[s] ?? 0} />
           ))}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button onClick={showAll} className="btn btn-ghost">Show all</button>
+            <a href="/api/export" className="btn btn-ghost">Export all</a>
+            <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
+          </div>
         </div>
 
-        {/* Filters */}
+        {/* Filters (one row) */}
         <div className="mb-3 flex flex-wrap items-end gap-2.5">
-          <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} />
-          <FilterSelect label="Segment" value={filters.segment} options={filterSegments} onChange={(v) => changeFilter("segment", v)} />
-          <FilterSelect label="Category" value={filters.category} options={filterCategories} onChange={(v) => changeFilter("category", v)} />
-          <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} />
-          <FilterSelect label="Website" value={filters.website} options={["All", "Has site", "No site"]} onChange={(v) => changeFilter("website", v)} />
-          <div className="min-w-[200px] flex-1">
+          <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} width="min-w-[150px]" />
+          <FilterSelect label="Segment" value={filters.segment} options={filterSegments} onChange={(v) => changeFilter("segment", v)} width="min-w-[140px]" />
+          <FilterSelect label="Category" value={filters.category} options={filterCategories} onChange={(v) => changeFilter("category", v)} width="min-w-[150px]" />
+          <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} width="w-[120px] min-w-[120px]" />
+          <FilterSelect label="Website" value={filters.website} options={["All", "Has site", "No site"]} onChange={(v) => changeFilter("website", v)} width="w-[120px] min-w-[120px]" />
+          <div className="min-w-[150px] flex-1">
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
           </div>
-          <button onClick={showAll} className="btn btn-ghost">Show all</button>
-          <a href="/api/export" className="btn btn-ghost">Export all</a>
-          <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
         </div>
 
         {/* Maintenance: prune permanently-closed businesses */}
@@ -676,16 +678,18 @@ function FilterSelect({
   value,
   options,
   onChange,
+  width = "min-w-[150px]",
 }: {
   label: string;
   value: string;
   options: string[];
   onChange: (v: string) => void;
+  width?: string;
 }) {
   return (
     <div>
       <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="control min-w-[150px]">
+      <select value={value} onChange={(e) => onChange(e.target.value)} className={`control ${width}`}>
         {options.map((o) => (
           <option key={o}>{o}</option>
         ))}
