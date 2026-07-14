@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/*
+  Dimak Prospector design tokens.
+  Steel + ink neutrals with a single ember accent (Dimak's orange).
+  These mirror the prototype CSS in reference/app.py exactly.
+*/
+:root {
+  --bg: #eef1f4; /* cool light steel, not cream */
+  --panel: #ffffff;
+  --ink: #161a20;
+  --steel: #5b636e;
+  --mute: #8b939f;
+  --line: #dde2e8;
+  --ember: #d2541c; /* accent: buttons, focus, header rule */
+  --ember-dk: #9c3d12; /* hover */
+  --status-new: #7b8592;
+  --status-contacted: #c9820e;
+  --status-replied: #1f8a54;
+  --status-nofit: #b04a3f;
+}
+
+/* Expose the tokens to Tailwind v4 utilities (bg-bg, text-ink, border-line, ...) */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-ink: var(--ink);
+  --color-steel: var(--steel);
+  --color-mute: var(--mute);
+  --color-line: var(--line);
+  --color-ember: var(--ember);
+  --color-ember-dk: var(--ember-dk);
+  --color-status-new: var(--status-new);
+  --color-status-contacted: var(--status-contacted);
+  --color-status-replied: var(--status-replied);
+  --color-status-nofit: var(--status-nofit);
+
+  /* Data fields (phone, rating, emails, ids) use mono; everything else system sans. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
