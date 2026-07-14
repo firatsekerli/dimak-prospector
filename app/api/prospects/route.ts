@@ -17,6 +17,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const country = searchParams.get("country");
   const segment = searchParams.get("segment");
+  const category = searchParams.get("category");
   const status = searchParams.get("status");
   const website = searchParams.get("website");
   const q = searchParams.get("q");
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
   const conditions = [];
   if (country && country !== "All") conditions.push(eq(prospects.country, country));
   if (segment && segment !== "All") conditions.push(like(prospects.segment, `%${segment}%`));
+  if (category && category !== "All") conditions.push(eq(prospects.category, category));
   if (status && status !== "All") conditions.push(eq(prospects.status, status));
   if (website === "Has site") conditions.push(sql`coalesce(${prospects.website}, '') <> ''`);
   else if (website === "No site") conditions.push(sql`coalesce(${prospects.website}, '') = ''`);
@@ -50,11 +52,17 @@ export async function GET(request: Request) {
   for (const r of out) counts[r.status] = (counts[r.status] ?? 0) + 1;
 
   // Distinct countries across the whole table (unfiltered) for the filter list.
-  const distinct = await db
+  const distinctCountries = await db
     .selectDistinct({ country: prospects.country })
     .from(prospects)
     .orderBy(asc(prospects.country));
-  const allCountries = distinct.map((d) => d.country).filter((c): c is string => !!c);
+  const allCountries = distinctCountries.map((d) => d.country).filter((c): c is string => !!c);
 
-  return NextResponse.json({ rows: out, total: out.length, counts, allCountries });
+  const distinctCategories = await db
+    .selectDistinct({ category: prospects.category })
+    .from(prospects)
+    .orderBy(asc(prospects.category));
+  const allCategories = distinctCategories.map((d) => d.category).filter((c): c is string => !!c);
+
+  return NextResponse.json({ rows: out, total: out.length, counts, allCountries, allCategories });
 }

@@ -26,8 +26,8 @@ const usdCompact = new Intl.NumberFormat("en", {
 });
 const fmtUSD = (v: number | null) => (v == null ? "—" : usdCompact.format(v));
 
-type Filters = { country: string; segment: string; status: string; website: string; q: string };
-const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", status: "All", website: "All", q: "" };
+type Filters = { country: string; segment: string; category: string; status: string; website: string; q: string };
+const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", category: "All", status: "All", website: "All", q: "" };
 
 export default function Console() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -38,7 +38,9 @@ export default function Console() {
   const [citiesBusy, setCitiesBusy] = useState(false);
   const [activeCities, setActiveCities] = useState<Record<string, boolean>>({});
 
-  const [segment, setSegment] = useState("");
+  const [segment, setSegment] = useState(""); // "tag new results as" ("" = don't tag)
+  const [segments, setSegments] = useState<string[]>([]);
+  const [newSegment, setNewSegment] = useState("");
   const [keyword, setKeyword] = useState("");
   const [enrich, setEnrich] = useState(false);
 
@@ -68,6 +70,11 @@ export default function Console() {
     setMarket(m);
   }, []);
 
+  const loadSegments = useCallback(async () => {
+    const r = await (await fetch("/api/segments")).json();
+    setSegments(r.segments ?? []);
+  }, []);
+
   const loadCities = useCallback(async (code: string) => {
     if (!code) return;
     setCitiesBusy(true);
@@ -87,9 +94,10 @@ export default function Console() {
     (async () => {
       const cfg: Config = await (await fetch("/api/config")).json();
       setConfig(cfg);
-      setSegment(cfg.segments[0] ?? "");
       const g: GeoResponse = await (await fetch("/api/geo")).json();
       setGeo(g);
+      const seg = await (await fetch("/api/segments")).json();
+      setSegments(seg.segments ?? []);
     })();
   }, []);
 
@@ -110,16 +118,48 @@ export default function Console() {
     if (filters.country && filters.country !== "All") set.add(filters.country);
     return [...set];
   }, [data, filters.country]);
+  const filterSegments = useMemo(() => ["All", ...segments], [segments]);
+  const filterCategories = useMemo(
+    () => ["All", ...(data?.allCategories ?? [])],
+    [data]
+  );
   const exportFilteredHref = useMemo(() => {
     const p = new URLSearchParams();
     if (filters.country !== "All") p.set("country", filters.country);
     if (filters.segment !== "All") p.set("segment", filters.segment);
+    if (filters.category !== "All") p.set("category", filters.category);
     if (filters.status !== "All") p.set("status", filters.status);
     if (filters.website !== "All") p.set("website", filters.website);
     if (filters.q) p.set("q", filters.q);
     const s = p.toString();
     return "/api/export" + (s ? "?" + s : "");
   }, [filters]);
+
+  const addSegment = async () => {
+    const name = newSegment.trim();
+    if (!name) return;
+    await fetch("/api/segments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setNewSegment("");
+    loadSegments();
+  };
+  const deleteSegment = async (name: string) => {
+    if (!window.confirm(`Delete segment “${name}”? It will be removed from any tagged businesses.`)) return;
+    await fetch("/api/segments", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    loadSegments();
+    reload(filters);
+  };
+  const onTag = async (placeId: string, segmentStr: string) => {
+    await save(placeId, { segment: segmentStr });
+    reload(filters);
+  };
 
   const onContinent = (code: string) => {
     setContinentCode(code);
@@ -192,7 +232,7 @@ export default function Console() {
     qTimer.current = setTimeout(() => reload(next), 300);
   };
 
-  async function save(placeId: string, fields: { status?: string; notes?: string }) {
+  async function save(placeId: string, fields: { status?: string; notes?: string; segment?: string }) {
     await fetch("/api/prospects/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -329,24 +369,19 @@ export default function Console() {
               <label htmlFor="keyword" className={label}>What to search for</label>
               <input
                 id="keyword"
-                list="terms"
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
                 placeholder="e.g. fire door supplier"
                 className="control w-full"
               />
-              <datalist id="terms">
-                {config?.terms.map((t) => (
-                  <option key={t} value={t} />
-                ))}
-              </datalist>
             </div>
 
             <div>
-              <label htmlFor="segment" className={label}>Tag results as</label>
+              <label htmlFor="segment" className={label}>Tag new results as</label>
               <select id="segment" value={segment} onChange={(e) => setSegment(e.target.value)} className="control min-w-[190px]">
-                {config?.segments.map((s) => (
+                <option value="">Don&apos;t tag</option>
+                {segments.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
               </select>
@@ -433,6 +468,36 @@ export default function Console() {
             )}
           </div>
 
+          {/* Manage your segments (labels you tag businesses with) */}
+          <div className="mt-3 border-t border-line pt-3">
+            <div className="mb-1.5 text-[11px] tracking-[0.05em] text-steel">Your segments</div>
+            <div className="flex flex-wrap items-center gap-1.5">
+              {segments.map((s) => (
+                <span key={s} className="inline-flex items-center gap-1 border border-line px-2 py-1 text-xs text-steel">
+                  {s}
+                  <button
+                    onClick={() => deleteSegment(s)}
+                    className="text-mute hover:text-status-nofit"
+                    aria-label={`Delete segment ${s}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              {segments.length === 0 && (
+                <span className="text-xs text-mute">No segments yet — add your own labels.</span>
+              )}
+              <input
+                value={newSegment}
+                onChange={(e) => setNewSegment(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addSegment())}
+                placeholder="new segment"
+                className="control control-sm ml-1 w-[150px]"
+              />
+              <button onClick={addSegment} className="btn btn-ghost btn-sm">Add</button>
+            </div>
+          </div>
+
           {searchMsg && <div className="mt-2.5 text-xs text-mute">{searchMsg}</div>}
         </section>
 
@@ -513,7 +578,8 @@ export default function Console() {
         {/* Filters */}
         <div className="mb-3 flex flex-wrap items-end gap-2.5">
           <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} />
-          <FilterSelect label="Segment" value={filters.segment} options={["All", ...(config?.segments ?? [])]} onChange={(v) => changeFilter("segment", v)} />
+          <FilterSelect label="Segment" value={filters.segment} options={filterSegments} onChange={(v) => changeFilter("segment", v)} />
+          <FilterSelect label="Category" value={filters.category} options={filterCategories} onChange={(v) => changeFilter("category", v)} />
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} />
           <FilterSelect label="Website" value={filters.website} options={["All", "Has site", "No site"]} onChange={(v) => changeFilter("website", v)} />
           <div className="min-w-[200px] flex-1">
@@ -562,10 +628,12 @@ export default function Console() {
                     key={r.placeId}
                     r={r}
                     statuses={config?.statuses ?? []}
+                    segments={segments}
                     enriching={!!enriching[r.placeId]}
                     onStatus={onStatus}
                     onNotes={onNotes}
                     onFind={enrichOne}
+                    onTag={onTag}
                   />
                 ))}
               </tbody>
@@ -629,19 +697,25 @@ function FilterSelect({
 function Row({
   r,
   statuses,
+  segments,
   enriching,
   onStatus,
   onNotes,
   onFind,
+  onTag,
 }: {
   r: ProspectRow;
   statuses: string[];
+  segments: string[];
   enriching: boolean;
   onStatus: (placeId: string, status: string) => void;
   onNotes: (placeId: string, notes: string) => void;
   onFind: (placeId: string) => void;
+  onTag: (placeId: string, segmentStr: string) => void;
 }) {
   const emails = (r.emails ?? "").split(" | ").filter(Boolean);
+  const tags = (r.segment ?? "").split(" | ").filter(Boolean);
+  const addable = segments.filter((s) => !tags.includes(s));
   const cell = "border-b border-line p-2.5 align-top";
   return (
     <tr>
@@ -661,7 +735,37 @@ function Row({
           )}
         </div>
       </td>
-      <td className={`${cell} text-xs text-mute`}>{r.segment}</td>
+      <td className={cell}>
+        <div className="flex flex-wrap items-center gap-1">
+          {tags.map((t) => (
+            <span key={t} className="inline-flex items-center gap-1 border border-line px-1.5 py-0.5 text-[11px] text-steel">
+              {t}
+              <button
+                onClick={() => onTag(r.placeId, tags.filter((x) => x !== t).join(" | "))}
+                className="text-mute hover:text-status-nofit"
+                aria-label={`Remove ${t}`}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+        {addable.length > 0 && (
+          <select
+            value=""
+            onChange={(e) => {
+              if (e.target.value) onTag(r.placeId, [...tags, e.target.value].join(" | "));
+            }}
+            className="control control-sm mt-1"
+            aria-label="Add segment"
+          >
+            <option value="">+ segment</option>
+            {addable.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        )}
+      </td>
       <td className={cell}>
         {r.country}
         <div className="text-xs text-mute">{r.city}</div>

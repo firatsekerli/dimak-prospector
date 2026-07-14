@@ -36,6 +36,7 @@ export type ProspectsResponse = {
   total: number;
   counts: Record<string, number>;
   allCountries: string[]; // distinct countries present in the whole table
+  allCategories: string[]; // distinct Google categories present
 };
 
 // v3 — geography cascade (GET /api/geo, GET /api/geo/cities)

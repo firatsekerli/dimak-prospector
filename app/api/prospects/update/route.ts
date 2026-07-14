@@ -7,12 +7,12 @@ import { STATUSES } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/prospects/update  body { place_id, status?, notes? }
- * Updates only the fields provided (so a status change never wipes notes and
- * vice-versa). Bumps updated_at.
+ * POST /api/prospects/update  body { place_id, status?, notes?, segment? }
+ * Updates only the fields provided (so one edit never wipes another).
+ * `segment` is the full " | "-joined tag string for the prospect. Bumps updated_at.
  */
 export async function POST(request: Request) {
-  let body: { place_id?: string; status?: string; notes?: string };
+  let body: { place_id?: string; status?: string; notes?: string; segment?: string };
   try {
     body = await request.json();
   } catch {
@@ -24,7 +24,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "place_id is required." }, { status: 400 });
   }
 
-  const set: { status?: string; notes?: string; updatedAt?: ReturnType<typeof sql> } = {};
+  const set: {
+    status?: string;
+    notes?: string;
+    segment?: string;
+    updatedAt?: ReturnType<typeof sql>;
+  } = {};
 
   if (typeof body.status === "string") {
     if (!STATUSES.includes(body.status)) {
@@ -35,8 +40,11 @@ export async function POST(request: Request) {
   if (typeof body.notes === "string") {
     set.notes = body.notes;
   }
+  if (typeof body.segment === "string") {
+    set.segment = body.segment;
+  }
 
-  if (set.status === undefined && set.notes === undefined) {
+  if (set.status === undefined && set.notes === undefined && set.segment === undefined) {
     return NextResponse.json({ ok: true }); // nothing to change
   }
 

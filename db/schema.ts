@@ -94,3 +94,15 @@ export const geoCities = pgTable(
 
 export type GeoCountryRow = typeof geoCountries.$inferSelect;
 export type GeoCityRow = typeof geoCities.$inferSelect;
+
+/**
+ * User-defined segments (labels the user creates and tags businesses with).
+ * Distinct from `prospects.category` (Google's business-selected primary type).
+ * A prospect's applied tags stay in `prospects.segment` (" | "-joined).
+ */
+export const segments = pgTable("segments", {
+  name: text("name").primaryKey(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type SegmentRow = typeof segments.$inferSelect;

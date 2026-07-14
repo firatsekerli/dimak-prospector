@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   }
 
   const keyword = (body.keyword ?? "").trim();
-  const segment = body.segment || "Unclassified";
+  const segment = (body.segment ?? "").trim(); // optional user tag; "" = don't tag
   const city = (body.city ?? "").trim();
   const countryCode = (body.countryCode ?? "").toUpperCase();
 

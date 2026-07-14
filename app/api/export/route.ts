@@ -36,6 +36,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const country = searchParams.get("country");
   const segment = searchParams.get("segment");
+  const category = searchParams.get("category");
   const status = searchParams.get("status");
   const website = searchParams.get("website");
   const q = searchParams.get("q");
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
   const conditions = [];
   if (country && country !== "All") conditions.push(eq(prospects.country, country));
   if (segment && segment !== "All") conditions.push(like(prospects.segment, `%${segment}%`));
+  if (category && category !== "All") conditions.push(eq(prospects.category, category));
   if (status && status !== "All") conditions.push(eq(prospects.status, status));
   if (website === "Has site") conditions.push(sql`coalesce(${prospects.website}, '') <> ''`);
   else if (website === "No site") conditions.push(sql`coalesce(${prospects.website}, '') = ''`);
