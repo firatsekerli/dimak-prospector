@@ -14,7 +14,7 @@ export const GULF_REPORTERS: { country: string; code: number }[] = [
 ];
 
 const BASE = "https://comtradeapi.un.org/data/v1/get/C/A/HS"; // Commodities, Annual, HS
-const FETCH_TIMEOUT_MS = 15000;
+const FETCH_TIMEOUT_MS = 25000;
 
 type RawRow = {
   primaryValue?: number;
@@ -32,74 +32,84 @@ export interface ImportRecord {
   quantity: number | null; // net weight (kg) when available
 }
 
-async function callComtrade(
-  apiKey: string,
-  reporterCode: number,
-  year: number
-): Promise<RawRow[]> {
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * A SINGLE Comtrade call for all reporters and all years (comma-separated), so
+ * the free-tier burst rate limit can't be tripped. Retries a couple of times
+ * with backoff if a 429 does occur (e.g. a lingering limit window).
+ */
+async function callComtrade(apiKey: string, reporterCodes: number[], years: number[]): Promise<RawRow[]> {
   const url = new URL(BASE);
-  url.searchParams.set("reporterCode", String(reporterCode));
-  url.searchParams.set("period", String(year));
+  url.searchParams.set("reporterCode", reporterCodes.join(","));
+  url.searchParams.set("period", years.join(","));
   url.searchParams.set("partnerCode", "0"); // World
   url.searchParams.set("flowCode", "M"); // imports
   url.searchParams.set("cmdCode", HS_STEEL_DOORS);
   url.searchParams.set("subscription-key", apiKey);
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: controller.signal,
-    });
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+    let res: Response;
+    try {
+      res = await fetch(url, { headers: { Accept: "application/json" }, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+
+    if (res.status === 429 && attempt < maxAttempts) {
+      await sleep(5000 * attempt); // 5s, then 10s
+      continue;
+    }
     if (!res.ok) {
       const text = await res.text().catch(() => "");
       throw new Error(`Comtrade ${res.status}: ${text.slice(0, 180)}`);
     }
     const json = (await res.json()) as { data?: RawRow[] | null };
     return Array.isArray(json?.data) ? json.data : [];
-  } finally {
-    clearTimeout(timer);
   }
+  throw new Error("Comtrade 429: rate limit — try again in ~30 seconds.");
 }
 
 /**
- * Fetch steel-door imports for every Gulf reporter across the given years.
- * Returns at most one record per (reporter, year) — the World aggregate, which
- * is the row with the largest value when the API includes any breakdowns.
+ * Fetch steel-door imports for every Gulf reporter across the given years in one
+ * request. Returns at most one record per (reporter, year) — the World
+ * aggregate, i.e. the row with the largest value when breakdowns are present.
  */
-export async function fetchSteelDoorImports(
-  apiKey: string,
-  years: number[]
-): Promise<ImportRecord[]> {
-  const out: ImportRecord[] = [];
+export async function fetchSteelDoorImports(apiKey: string, years: number[]): Promise<ImportRecord[]> {
+  const rows = await callComtrade(apiKey, GULF_REPORTERS.map((r) => r.code), years);
 
-  for (const reporter of GULF_REPORTERS) {
-    for (const year of years) {
-      const rows = await callComtrade(apiKey, reporter.code, year);
-      if (rows.length === 0) continue;
-
-      let best: RawRow | null = null;
-      for (const row of rows) {
-        const v = typeof row.primaryValue === "number" ? row.primaryValue : -1;
-        if (!best || v > (best.primaryValue ?? -1)) best = row;
-      }
-      if (!best) continue;
-
-      out.push({
-        country: reporter.country,
-        reporterCode: reporter.code,
-        period: Number(best.period ?? year),
-        importValue: typeof best.primaryValue === "number" ? best.primaryValue : null,
-        quantity:
-          typeof best.netWgt === "number"
-            ? best.netWgt
-            : typeof best.qty === "number"
-              ? best.qty
-              : null,
-      });
-    }
+  // Keep the largest value per (reporter, period).
+  const best = new Map<string, RawRow>();
+  for (const row of rows) {
+    if (row.reporterCode == null) continue;
+    const period = Number(row.period);
+    if (!Number.isFinite(period)) continue;
+    const key = `${row.reporterCode}:${period}`;
+    const cur = best.get(key);
+    const v = typeof row.primaryValue === "number" ? row.primaryValue : -1;
+    if (!cur || v > (cur.primaryValue ?? -1)) best.set(key, row);
   }
 
+  const out: ImportRecord[] = [];
+  for (const [key, row] of best) {
+    const reporterCode = Number(key.split(":")[0]);
+    const reporter = GULF_REPORTERS.find((r) => r.code === reporterCode);
+    if (!reporter) continue;
+    out.push({
+      country: reporter.country,
+      reporterCode,
+      period: Number(row.period),
+      importValue: typeof row.primaryValue === "number" ? row.primaryValue : null,
+      quantity:
+        typeof row.netWgt === "number"
+          ? row.netWgt
+          : typeof row.qty === "number"
+            ? row.qty
+            : null,
+    });
+  }
   return out;
 }

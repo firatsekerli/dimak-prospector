@@ -28,10 +28,14 @@ export async function POST() {
   try {
     records = await fetchSteelDoorImports(apiKey, years);
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : "Comtrade error" },
-      { status: 502 }
-    );
+    const msg = e instanceof Error ? e.message : "Comtrade error";
+    if (msg.includes("429")) {
+      return NextResponse.json(
+        { error: "UN Comtrade rate limit hit — wait ~30 seconds and click Refresh again." },
+        { status: 429 }
+      );
+    }
+    return NextResponse.json({ error: msg }, { status: 502 });
   }
 
   if (records.length === 0) {
