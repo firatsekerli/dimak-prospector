@@ -35,7 +35,15 @@ export type ProspectsResponse = {
   rows: ProspectRow[];
   total: number;
   counts: Record<string, number>;
+  allCountries: string[]; // distinct countries present in the whole table
 };
+
+// v3 — geography cascade (GET /api/geo, GET /api/geo/cities)
+export type GeoCountry = { code: string; name: string; isoNumeric: number | null };
+export type Continent = { code: string; name: string; countries: GeoCountry[] };
+export type GeoResponse = { continents: Continent[] };
+export type CityRow = { city: string; adminName: string; population: number | null };
+export type CitiesResponse = { country: string; cities: CityRow[] };
 
 // v2 — steel-door import market intelligence (GET /api/market)
 export type MarketRow = {

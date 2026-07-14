@@ -46,5 +46,12 @@ export async function GET(request: Request) {
   const counts: Record<string, number> = Object.fromEntries(STATUSES.map((s) => [s, 0]));
   for (const r of out) counts[r.status] = (counts[r.status] ?? 0) + 1;
 
-  return NextResponse.json({ rows: out, total: out.length, counts });
+  // Distinct countries across the whole table (unfiltered) for the filter list.
+  const distinct = await db
+    .selectDistinct({ country: prospects.country })
+    .from(prospects)
+    .orderBy(asc(prospects.country));
+  const allCountries = distinct.map((d) => d.country).filter((c): c is string => !!c);
+
+  return NextResponse.json({ rows: out, total: out.length, counts, allCountries });
 }

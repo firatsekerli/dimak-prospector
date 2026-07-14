@@ -7,6 +7,9 @@ import type {
   ProspectsResponse,
   MarketRow,
   MarketResponse,
+  GeoResponse,
+  CitiesResponse,
+  CityRow,
 } from "@/lib/types";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -29,10 +32,16 @@ const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", status: "All"
 
 export default function Console() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [geo, setGeo] = useState<GeoResponse | null>(null);
+  const [continentCode, setContinentCode] = useState("AS");
+  const [countryCode, setCountryCode] = useState("");
+  const [cities, setCities] = useState<CityRow[]>([]);
+  const [citiesBusy, setCitiesBusy] = useState(false);
+  const [activeCities, setActiveCities] = useState<Record<string, boolean>>({});
+
   const [segment, setSegment] = useState("");
   const [keyword, setKeyword] = useState("");
   const [enrich, setEnrich] = useState(false);
-  const [activeCities, setActiveCities] = useState<Record<string, boolean>>({});
 
   const [searching, setSearching] = useState(false);
   const [searchMsg, setSearchMsg] = useState("");
@@ -57,12 +66,46 @@ export default function Console() {
     setMarket(m);
   }, []);
 
+  const loadCities = useCallback(async (code: string) => {
+    if (!code) return;
+    setCitiesBusy(true);
+    try {
+      const r: CitiesResponse = await (await fetch(`/api/geo/cities?country=${code}`)).json();
+      const list = r.cities ?? [];
+      setCities(list);
+      setActiveCities(Object.fromEntries(list.map((c) => [c.city, true])));
+    } finally {
+      setCitiesBusy(false);
+    }
+  }, []);
+
+  // Pick a sensible default country for a continent (UAE if present).
+  const pickCountry = (g: GeoResponse, continent: string) => {
+    const list = g.continents.find((c) => c.code === continent)?.countries ?? [];
+    return list.find((c) => c.code === "AE")?.code ?? list[0]?.code ?? "";
+  };
+
   useEffect(() => {
     (async () => {
       const cfg: Config = await (await fetch("/api/config")).json();
       setConfig(cfg);
       setSegment(cfg.segments[0] ?? "");
-      setActiveCities(Object.fromEntries(cfg.cities.map((c) => [c.city, true])));
+
+      const g: GeoResponse = await (await fetch("/api/geo")).json();
+      setGeo(g);
+      const startContinent = g.continents.some((c) => c.code === "AS")
+        ? "AS"
+        : (g.continents[0]?.code ?? "AS");
+      setContinentCode(startContinent);
+      const startCountry = pickCountry(g, startContinent);
+      setCountryCode(startCountry);
+      if (startCountry) {
+        const r: CitiesResponse = await (await fetch(`/api/geo/cities?country=${startCountry}`)).json();
+        const list = r.cities ?? [];
+        setCities(list);
+        setActiveCities(Object.fromEntries(list.map((c) => [c.city, true])));
+      }
+
       const res: ProspectsResponse = await (await fetch("/api/prospects")).json();
       setData(res);
       const m: MarketResponse = await (await fetch("/api/market")).json();
@@ -70,19 +113,34 @@ export default function Console() {
     })();
   }, []);
 
-  const countries = useMemo(
-    () => ["All", ...new Set((config?.cities ?? []).map((c) => c.country))],
-    [config]
+  const continentCountries = useMemo(
+    () => geo?.continents.find((c) => c.code === continentCode)?.countries ?? [],
+    [geo, continentCode]
   );
   const selectedCities = useMemo(
-    () => (config?.cities ?? []).filter((c) => activeCities[c.city]),
-    [config, activeCities]
+    () => cities.filter((c) => activeCities[c.city]),
+    [cities, activeCities]
   );
+  const filterCountries = useMemo(
+    () => ["All", ...(data?.allCountries ?? [])],
+    [data]
+  );
+
+  const onContinent = (code: string) => {
+    setContinentCode(code);
+    const country = geo ? pickCountry(geo, code) : "";
+    setCountryCode(country);
+    loadCities(country);
+  };
+  const onCountry = (code: string) => {
+    setCountryCode(code);
+    loadCities(code);
+  };
 
   const toggleCity = (city: string) =>
     setActiveCities((prev) => ({ ...prev, [city]: !prev[city] }));
   const setAllCities = (on: boolean) =>
-    setActiveCities(Object.fromEntries((config?.cities ?? []).map((c) => [c.city, on])));
+    setActiveCities(Object.fromEntries(cities.map((c) => [c.city, on])));
 
   const changeFilter = (key: keyof Filters, value: string) => {
     const next = { ...filters, [key]: value };
@@ -103,7 +161,6 @@ export default function Console() {
       body: JSON.stringify({ place_id: placeId, ...fields }),
     });
   }
-
   const onStatus = async (placeId: string, status: string) => {
     await save(placeId, { status });
     reload(filters);
@@ -158,6 +215,7 @@ export default function Console() {
   async function runSearch() {
     const kw = keyword.trim();
     if (!kw) return setSearchMsg("Type what to search for first.");
+    if (!countryCode) return setSearchMsg("Pick a country first.");
     if (selectedCities.length === 0) return setSearchMsg("Pick at least one city.");
 
     setSearching(true);
@@ -171,7 +229,7 @@ export default function Console() {
         const res = await fetch("/api/search", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ keyword: kw, segment, city }),
+          body: JSON.stringify({ keyword: kw, segment, city, countryCode }),
         });
         const d = await res.json();
         if (!res.ok) return setSearchMsg(d.error || `Search failed for ${city}.`);
@@ -241,12 +299,7 @@ export default function Console() {
 
             <div>
               <label htmlFor="segment" className={label}>Tag results as</label>
-              <select
-                id="segment"
-                value={segment}
-                onChange={(e) => setSegment(e.target.value)}
-                className="control min-w-[190px]"
-              >
+              <select id="segment" value={segment} onChange={(e) => setSegment(e.target.value)} className="control min-w-[190px]">
                 {config?.segments.map((s) => (
                   <option key={s}>{s}</option>
                 ))}
@@ -270,6 +323,27 @@ export default function Console() {
             </button>
           </div>
 
+          {/* Continent -> Country */}
+          <div className="mt-3 flex flex-wrap items-end gap-2.5">
+            <div>
+              <label htmlFor="continent" className={label}>Continent</label>
+              <select id="continent" value={continentCode} onChange={(e) => onContinent(e.target.value)} className="control min-w-[150px]">
+                {geo?.continents.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label htmlFor="country" className={label}>Country</label>
+              <select id="country" value={countryCode} onChange={(e) => onCountry(e.target.value)} className="control min-w-[220px]">
+                {continentCountries.map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Cities of the selected country */}
           <div className="mt-3">
             <div className="mb-1.5 text-[11px] tracking-[0.05em] text-steel">
               Cities{" "}
@@ -277,24 +351,30 @@ export default function Console() {
               {" / "}
               <button type="button" onClick={() => setAllCities(false)} className="text-mute underline-offset-2 hover:underline">none</button>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {config?.cities.map((c) => {
-                const on = !!activeCities[c.city];
-                return (
-                  <button
-                    type="button"
-                    key={c.city}
-                    aria-pressed={on}
-                    onClick={() => toggleCity(c.city)}
-                    className={`h-[30px] border px-3 text-xs ${
-                      on ? "border-ink bg-ink text-white" : "border-line bg-white text-steel"
-                    }`}
-                  >
-                    {c.city}
-                  </button>
-                );
-              })}
-            </div>
+            {citiesBusy ? (
+              <div className="text-xs text-mute">Loading cities…</div>
+            ) : cities.length === 0 ? (
+              <div className="text-xs text-mute">No cities found for this country.</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {cities.map((c) => {
+                  const on = !!activeCities[c.city];
+                  return (
+                    <button
+                      type="button"
+                      key={c.city}
+                      aria-pressed={on}
+                      onClick={() => toggleCity(c.city)}
+                      className={`h-[30px] border px-3 text-xs ${
+                        on ? "border-ink bg-ink text-white" : "border-line bg-white text-steel"
+                      }`}
+                    >
+                      {c.city}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {searchMsg && <div className="mt-2.5 text-xs text-mute">{searchMsg}</div>}
@@ -313,9 +393,7 @@ export default function Console() {
               <span className="text-xs text-mute">{marketMsg}</span>
             ) : (
               market?.updatedAt && (
-                <span className="text-xs text-mute">
-                  as of {new Date(market.updatedAt).toLocaleDateString()}
-                </span>
+                <span className="text-xs text-mute">as of {new Date(market.updatedAt).toLocaleDateString()}</span>
               )
             )}
           </div>
@@ -328,8 +406,7 @@ export default function Console() {
             </div>
           ) : (
             <p className="mt-2 text-[11px] text-mute">
-              No market data yet. Click “Refresh data” to pull the latest steel-door
-              import figures from UN Comtrade.
+              No market data yet. Click “Refresh data” to pull the latest steel-door import figures from UN Comtrade.
             </p>
           )}
 
@@ -349,7 +426,7 @@ export default function Console() {
 
         {/* Filters */}
         <div className="mb-3 flex flex-wrap items-end gap-2.5">
-          <FilterSelect label="Country" value={filters.country} options={countries} onChange={(v) => changeFilter("country", v)} />
+          <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} />
           <FilterSelect label="Segment" value={filters.segment} options={["All", ...(config?.segments ?? [])]} onChange={(v) => changeFilter("segment", v)} />
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} />
           <div className="min-w-[200px] flex-1">
@@ -503,9 +580,7 @@ function Row({
 
       {/* Contact details: phone + WhatsApp/site + email in one column */}
       <td className={cell}>
-        <div className="font-mono text-xs">
-          {r.phone || <span className="text-mute">—</span>}
-        </div>
+        <div className="font-mono text-xs">{r.phone || <span className="text-mute">—</span>}</div>
         {(r.wa || r.website) && (
           <div className="mt-1 flex gap-2 text-xs">
             {r.wa && (
