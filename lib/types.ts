@@ -7,6 +7,9 @@ export type Config = {
   statuses: string[];
 };
 
+// A single timestamped note in a prospect's log. `createdAt` is an ISO string.
+export type ProspectNote = { id: number; body: string; createdAt: string };
+
 // A stored lead from GET /api/prospects — only the fields we persist (place_id
 // + the user's own data). Business content is NOT here; it is fetched live.
 // Timestamps arrive as ISO strings over JSON.
@@ -17,7 +20,7 @@ export type ProspectRow = {
   city: string | null;
   emails: string | null;
   status: string;
-  notes: string;
+  notes: ProspectNote[]; // timestamped note log, newest first
   source: string | null;
   createdAt: string;
   updatedAt: string;

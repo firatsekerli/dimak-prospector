@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Config,
   ProspectRow,
+  ProspectNote,
   ProspectsResponse,
   MarketResponse,
   GeoResponse,
@@ -305,7 +306,7 @@ export default function Console() {
   };
   const changeFind = (value: string) => setFilters((f) => ({ ...f, q: value }));
 
-  async function save(placeId: string, fields: { status?: string; notes?: string; segment?: string }) {
+  async function save(placeId: string, fields: { status?: string; segment?: string }) {
     await fetch("/api/prospects/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -316,7 +317,22 @@ export default function Console() {
     await save(placeId, { status });
     reload(filters);
   };
-  const onNotes = (placeId: string, notes: string) => save(placeId, { notes });
+  const addNote = async (placeId: string, body: string) => {
+    await fetch("/api/prospects/notes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ place_id: placeId, body }),
+    });
+    await reload(filters);
+  };
+  const deleteNote = async (id: number) => {
+    await fetch("/api/prospects/notes", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    await reload(filters);
+  };
 
   const patchEmails = (placeId: string, emails: string) =>
     setData((prev) =>
@@ -729,7 +745,8 @@ export default function Console() {
                     segments={segments}
                     enriching={!!enriching[r.placeId]}
                     onStatus={onStatus}
-                    onNotes={onNotes}
+                    onAddNote={addNote}
+                    onDeleteNote={deleteNote}
                     onFind={enrichOne}
                     onTag={onTag}
                   />
@@ -802,7 +819,8 @@ function Row({
   segments,
   enriching,
   onStatus,
-  onNotes,
+  onAddNote,
+  onDeleteNote,
   onFind,
   onTag,
 }: {
@@ -812,7 +830,8 @@ function Row({
   segments: string[];
   enriching: boolean;
   onStatus: (placeId: string, status: string) => void;
-  onNotes: (placeId: string, notes: string) => void;
+  onAddNote: (placeId: string, body: string) => Promise<void>;
+  onDeleteNote: (id: number) => Promise<void>;
   onFind: (placeId: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
 }) {
@@ -934,15 +953,90 @@ function Row({
           ))}
         </select>
       </td>
-      <td className={cell} style={{ minWidth: 150 }}>
-        <textarea
-          key={`${r.placeId}:${r.updatedAt}`}
-          defaultValue={r.notes}
-          onBlur={(e) => onNotes(r.placeId, e.target.value)}
-          rows={2}
-          className="control w-full text-xs"
-        />
+      <td className={cell} style={{ minWidth: 210 }}>
+        <NotesCell placeId={r.placeId} notes={r.notes} onAdd={onAddNote} onDelete={onDeleteNote} />
       </td>
     </tr>
+  );
+}
+
+const noteDateFmt = new Intl.DateTimeFormat(undefined, {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+const fmtNoteDate = (iso: string) => noteDateFmt.format(new Date(iso));
+
+function NotesCell({
+  placeId,
+  notes,
+  onAdd,
+  onDelete,
+}: {
+  placeId: string;
+  notes: ProspectNote[];
+  onAdd: (placeId: string, body: string) => Promise<void>;
+  onDelete: (id: number) => Promise<void>;
+}) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    const body = text.trim();
+    if (!body || busy) return;
+    setBusy(true);
+    try {
+      await onAdd(placeId, body);
+      setText("");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="min-w-[200px]">
+      {notes.length > 0 && (
+        <ul className="mb-1.5 space-y-1">
+          {notes.map((n) => (
+            <li key={n.id} className="border border-line bg-[#f6f8fa] px-2 py-1 text-xs">
+              <div className="whitespace-pre-wrap break-words text-ink">{n.body}</div>
+              <div className="mt-0.5 flex items-center justify-between gap-2">
+                <time dateTime={n.createdAt} className="font-mono text-[10px] text-mute">
+                  {fmtNoteDate(n.createdAt)}
+                </time>
+                <button
+                  onClick={() => onDelete(n.id)}
+                  className="text-[10px] text-mute hover:text-status-nofit"
+                  aria-label="Delete note"
+                >
+                  delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            submit();
+          }
+        }}
+        rows={2}
+        placeholder="Add a note…"
+        className="control w-full text-xs"
+      />
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-[10px] text-mute">⌘/Ctrl+Enter</span>
+        <button onClick={submit} disabled={busy || !text.trim()} className="btn btn-ghost btn-sm">
+          {busy ? "Adding…" : "Add note"}
+        </button>
+      </div>
+    </div>
   );
 }

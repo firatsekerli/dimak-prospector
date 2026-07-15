@@ -7,12 +7,13 @@ import { STATUSES } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/prospects/update  body { place_id, status?, notes?, segment? }
+ * POST /api/prospects/update  body { place_id, status?, segment? }
  * Updates only the fields provided (so one edit never wipes another).
  * `segment` is the full " | "-joined tag string for the prospect. Bumps updated_at.
+ * Notes are managed separately via /api/prospects/notes (a timestamped log).
  */
 export async function POST(request: Request) {
-  let body: { place_id?: string; status?: string; notes?: string; segment?: string };
+  let body: { place_id?: string; status?: string; segment?: string };
   try {
     body = await request.json();
   } catch {
@@ -26,7 +27,6 @@ export async function POST(request: Request) {
 
   const set: {
     status?: string;
-    notes?: string;
     segment?: string;
     updatedAt?: ReturnType<typeof sql>;
   } = {};
@@ -37,14 +37,11 @@ export async function POST(request: Request) {
     }
     set.status = body.status;
   }
-  if (typeof body.notes === "string") {
-    set.notes = body.notes;
-  }
   if (typeof body.segment === "string") {
     set.segment = body.segment;
   }
 
-  if (set.status === undefined && set.notes === undefined && set.segment === undefined) {
+  if (set.status === undefined && set.segment === undefined) {
     return NextResponse.json({ ok: true }); // nothing to change
   }
 

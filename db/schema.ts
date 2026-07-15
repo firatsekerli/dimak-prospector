@@ -2,10 +2,12 @@ import {
   pgTable,
   text,
   integer,
+  serial,
   timestamp,
   boolean,
   doublePrecision,
   primaryKey,
+  index,
 } from "drizzle-orm/pg-core";
 
 /**
@@ -31,7 +33,6 @@ export const prospects = pgTable("prospects", {
   city: text("city"), // the city the user searched
   emails: text("emails"), // extracted from the company website (our data), " | "-joined
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
-  notes: text("notes").notNull().default(""),
   source: text("source"), // e.g. 'Google Places'
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -39,6 +40,27 @@ export const prospects = pgTable("prospects", {
 
 export type Prospect = typeof prospects.$inferSelect;
 export type NewProspect = typeof prospects.$inferInsert;
+
+/**
+ * `prospect_notes` — a timestamped log of notes for a prospect. Replaces the old
+ * single free-text `notes` column so the user can leave several dated notes over
+ * time (and see when each was written). Deleted with its prospect (cascade).
+ */
+export const prospectNotes = pgTable(
+  "prospect_notes",
+  {
+    id: serial("id").primaryKey(),
+    placeId: text("place_id")
+      .notNull()
+      .references(() => prospects.placeId, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("prospect_notes_place_id_idx").on(t.placeId)]
+);
+
+export type ProspectNoteRow = typeof prospectNotes.$inferSelect;
+export type NewProspectNote = typeof prospectNotes.$inferInsert;
 
 /**
  * v2 — steel-door (HS 730830) import statistics per Gulf country, from the free

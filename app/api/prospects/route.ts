@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { and, eq, like, asc, desc } from "drizzle-orm";
+import { and, eq, like, asc, desc, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { prospects } from "@/db/schema";
+import { prospects, prospectNotes } from "@/db/schema";
 import { cleanEmailsField } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,6 @@ export async function GET(request: Request) {
       city: prospects.city,
       emails: prospects.emails,
       status: prospects.status,
-      notes: prospects.notes,
       source: prospects.source,
       createdAt: prospects.createdAt,
       updatedAt: prospects.updatedAt,
@@ -43,7 +42,27 @@ export async function GET(request: Request) {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(asc(prospects.country), asc(prospects.city), desc(prospects.createdAt));
 
-  const out = rows.map((r) => ({ ...r, emails: cleanEmailsField(r.emails) }));
+  // Attach each prospect's note log (newest first).
+  const ids = rows.map((r) => r.placeId);
+  const noteRows = ids.length
+    ? await db
+        .select({ id: prospectNotes.id, placeId: prospectNotes.placeId, body: prospectNotes.body, createdAt: prospectNotes.createdAt })
+        .from(prospectNotes)
+        .where(inArray(prospectNotes.placeId, ids))
+        .orderBy(desc(prospectNotes.createdAt))
+    : [];
+  const notesByPlace = new Map<string, { id: number; body: string; createdAt: Date }[]>();
+  for (const n of noteRows) {
+    const list = notesByPlace.get(n.placeId) ?? [];
+    list.push({ id: n.id, body: n.body, createdAt: n.createdAt });
+    notesByPlace.set(n.placeId, list);
+  }
+
+  const out = rows.map((r) => ({
+    ...r,
+    emails: cleanEmailsField(r.emails),
+    notes: notesByPlace.get(r.placeId) ?? [],
+  }));
 
   // Distinct countries across the whole table (unfiltered) for the filter list.
   const distinctCountries = await db
