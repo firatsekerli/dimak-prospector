@@ -70,6 +70,7 @@ export default function Console() {
   const [hsCode, setHsCode] = useState("730830");
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState("");
+  const [notesFor, setNotesFor] = useState<string | null>(null); // placeId of the open notes popup
 
   // Fetch live Place Details for any place_ids we don't already have (and aren't
   // already fetching), chunked to bound each request. Merges into the cache.
@@ -317,21 +318,31 @@ export default function Console() {
     await save(placeId, { status });
     reload(filters);
   };
+  // Note edits update just the affected row in place — no full reload, so the
+  // list never re-sorts or jumps under the user while they're writing.
+  const patchNotes = (placeId: string, fn: (notes: ProspectNote[]) => ProspectNote[]) =>
+    setData((prev) =>
+      prev
+        ? { ...prev, rows: prev.rows.map((r) => (r.placeId === placeId ? { ...r, notes: fn(r.notes) } : r)) }
+        : prev
+    );
+
   const addNote = async (placeId: string, body: string) => {
-    await fetch("/api/prospects/notes", {
+    const res = await fetch("/api/prospects/notes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ place_id: placeId, body }),
     });
-    await reload(filters);
+    const d = await res.json();
+    if (d.note) patchNotes(placeId, (notes) => [d.note as ProspectNote, ...notes]);
   };
-  const deleteNote = async (id: number) => {
+  const deleteNote = async (placeId: string, id: number) => {
     await fetch("/api/prospects/notes", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
-    await reload(filters);
+    patchNotes(placeId, (notes) => notes.filter((n) => n.id !== id));
   };
 
   const patchEmails = (placeId: string, emails: string) =>
@@ -745,8 +756,7 @@ export default function Console() {
                     segments={segments}
                     enriching={!!enriching[r.placeId]}
                     onStatus={onStatus}
-                    onAddNote={addNote}
-                    onDeleteNote={deleteNote}
+                    onOpenNotes={() => setNotesFor(r.placeId)}
                     onFind={enrichOne}
                     onTag={onTag}
                   />
@@ -764,6 +774,20 @@ export default function Console() {
           </p>
         )}
       </main>
+
+      {notesFor && (
+        <NotesModal
+          title={details[notesFor]?.company || notesFor}
+          subtitle={(() => {
+            const r = data?.rows.find((x) => x.placeId === notesFor);
+            return r ? [r.city, r.country].filter(Boolean).join(", ") : "";
+          })()}
+          notes={data?.rows.find((x) => x.placeId === notesFor)?.notes ?? []}
+          onAdd={(body) => addNote(notesFor, body)}
+          onDelete={(id) => deleteNote(notesFor, id)}
+          onClose={() => setNotesFor(null)}
+        />
+      )}
     </>
   );
 }
@@ -819,8 +843,7 @@ function Row({
   segments,
   enriching,
   onStatus,
-  onAddNote,
-  onDeleteNote,
+  onOpenNotes,
   onFind,
   onTag,
 }: {
@@ -830,8 +853,7 @@ function Row({
   segments: string[];
   enriching: boolean;
   onStatus: (placeId: string, status: string) => void;
-  onAddNote: (placeId: string, body: string) => Promise<void>;
-  onDeleteNote: (id: number) => Promise<void>;
+  onOpenNotes: () => void;
   onFind: (placeId: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
 }) {
@@ -953,8 +975,24 @@ function Row({
           ))}
         </select>
       </td>
-      <td className={cell} style={{ minWidth: 210 }}>
-        <NotesCell placeId={r.placeId} notes={r.notes} onAdd={onAddNote} onDelete={onDeleteNote} />
+      <td className={cell} style={{ minWidth: 140 }}>
+        {(() => {
+          const latest = r.notes[0];
+          return (
+            <button
+              onClick={onOpenNotes}
+              className="w-full border border-line px-2 py-1 text-left text-xs hover:border-ember hover:text-ember-dk"
+              title={latest ? latest.body : "Add a note"}
+            >
+              <span className="font-semibold">
+                {r.notes.length > 0 ? `Notes · ${r.notes.length}` : "+ Add note"}
+              </span>
+              {latest && (
+                <span className="mt-0.5 block truncate text-[11px] text-mute">{latest.body}</span>
+              )}
+            </button>
+          );
+        })()}
       </td>
     </tr>
   );
@@ -969,73 +1007,120 @@ const noteDateFmt = new Intl.DateTimeFormat(undefined, {
 });
 const fmtNoteDate = (iso: string) => noteDateFmt.format(new Date(iso));
 
-function NotesCell({
-  placeId,
+function NotesModal({
+  title,
+  subtitle,
   notes,
   onAdd,
   onDelete,
+  onClose,
 }: {
-  placeId: string;
+  title: string;
+  subtitle: string;
   notes: ProspectNote[];
-  onAdd: (placeId: string, body: string) => Promise<void>;
+  onAdd: (body: string) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onClose: () => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
 
   const submit = async () => {
     const body = text.trim();
     if (!body || busy) return;
     setBusy(true);
     try {
-      await onAdd(placeId, body);
+      await onAdd(body);
       setText("");
+      inputRef.current?.focus();
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="min-w-[200px]">
-      {notes.length > 0 && (
-        <ul className="mb-1.5 space-y-1">
-          {notes.map((n) => (
-            <li key={n.id} className="border border-line bg-[#f6f8fa] px-2 py-1 text-xs">
-              <div className="whitespace-pre-wrap break-words text-ink">{n.body}</div>
-              <div className="mt-0.5 flex items-center justify-between gap-2">
-                <time dateTime={n.createdAt} className="font-mono text-[10px] text-mute">
-                  {fmtNoteDate(n.createdAt)}
-                </time>
-                <button
-                  onClick={() => onDelete(n.id)}
-                  className="text-[10px] text-mute hover:text-status-nofit"
-                  aria-label="Delete note"
-                >
-                  delete
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            submit();
-          }
-        }}
-        rows={2}
-        placeholder="Add a note…"
-        className="control w-full text-xs"
-      />
-      <div className="mt-1 flex items-center justify-between">
-        <span className="text-[10px] text-mute">⌘/Ctrl+Enter</span>
-        <button onClick={submit} disabled={busy || !text.trim()} className="btn btn-ghost btn-sm">
-          {busy ? "Adding…" : "Add note"}
-        </button>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Notes for ${title}`}
+    >
+      <div
+        className="w-full max-w-[520px] border border-line bg-panel shadow-xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-ink px-4 py-3 text-white">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{title}</div>
+            {subtitle && <div className="truncate text-xs text-[#9aa3af]">{subtitle}</div>}
+          </div>
+          <button onClick={onClose} className="text-[#9aa3af] hover:text-white" aria-label="Close notes">
+            ✕
+          </button>
+        </div>
+
+        {/* Add box */}
+        <div className="border-b border-line p-4">
+          <textarea
+            ref={inputRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                submit();
+              }
+            }}
+            rows={3}
+            placeholder="Add a note…"
+            className="control w-full text-sm"
+          />
+          <div className="mt-2 flex items-center justify-between">
+            <span className="text-[10px] text-mute">⌘/Ctrl+Enter to save</span>
+            <button onClick={submit} disabled={busy || !text.trim()} className="btn btn-primary btn-sm">
+              {busy ? "Adding…" : "Add note"}
+            </button>
+          </div>
+        </div>
+
+        {/* Log (newest first), scrollable so the popup never grows without bound */}
+        <div className="max-h-[46vh] overflow-y-auto p-4">
+          {notes.length === 0 ? (
+            <p className="text-center text-xs text-mute">No notes yet.</p>
+          ) : (
+            <ul className="space-y-2">
+              {notes.map((n) => (
+                <li key={n.id} className="border border-line bg-[#f6f8fa] px-3 py-2">
+                  <div className="whitespace-pre-wrap break-words text-sm text-ink">{n.body}</div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <time dateTime={n.createdAt} className="font-mono text-[10px] text-mute">
+                      {fmtNoteDate(n.createdAt)}
+                    </time>
+                    <button
+                      onClick={() => onDelete(n.id)}
+                      className="text-[10px] text-mute hover:text-status-nofit"
+                      aria-label="Delete note"
+                    >
+                      delete
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

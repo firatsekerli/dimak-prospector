@@ -40,7 +40,9 @@ export async function GET(request: Request) {
     })
     .from(prospects)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(asc(prospects.country), asc(prospects.city), desc(prospects.createdAt));
+    // place_id is a stable final tiebreaker: rows saved in the same search share
+    // an identical created_at, so without it the order shuffles on every reload.
+    .orderBy(asc(prospects.country), asc(prospects.city), desc(prospects.createdAt), asc(prospects.placeId));
 
   // Attach each prospect's note log (newest first).
   const ids = rows.map((r) => r.placeId);
