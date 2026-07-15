@@ -1,8 +1,13 @@
 # Dimak Prospector
 
 A lead-generation web app for Dimak Kapi's Gulf fire door export. Search live
-company data from the Google Places API, review prospects, track who has been
-contacted, and export the list.
+company data from the Google Places API, review prospects, and track who has
+been contacted.
+
+Business content (name, phone, website, address, category) is **never stored**
+— only the Google `place_id` and your own pipeline data are saved, and the
+business details are fetched live from Google when a row is shown. See
+[Data storage & Google Places compliance](#data-storage--google-places-compliance).
 
 This is the deployable rebuild of the local Flask/SQLite prototype in
 `reference/`. Stack: **Next.js (App Router) + TypeScript + Tailwind CSS**, with
@@ -71,16 +76,38 @@ Set `APP_PASSWORD` to a strong password of your choice. Put both in Vercel's
 environment variables (and `.env.local` for local dev). If either is missing,
 login returns `500` and the gate stays closed.
 
+## Data storage & Google Places compliance
+
+The app is built to keep Google's business content out of the database, which is
+what the Maps Platform terms require:
+
+- **Stored (in Neon Postgres):** the Google `place_id` (which Google explicitly
+  permits storing indefinitely), the **country and city you searched** (your own
+  search input), your **segment tags, status and notes**, and any **emails**
+  extracted from a company's own public website (not Google data).
+- **Never stored:** business name, phone, website, address, category. These are
+  fetched **live** from Place Details (New) each time a row is displayed
+  (`POST /api/prospects/details`) and held only in the browser for the session.
+- **No bulk export.** There is deliberately no CSV/Excel download of Google
+  data. Salespeople work the pipeline inside the app.
+
+This means a search stores only IDs; opening the console re-fetches the details
+live. "Refresh live data" (below the filters) clears the in-memory cache and
+re-fetches; "Remove permanently-closed" checks each saved `place_id` against
+Google and deletes the ones now marked closed.
+
 ## Cost and safety notes
 
 The Google Places API is billed per request, and the contact fields (phone,
-website) sit in a higher pricing tier. Configure both of these in Google Cloud
-so a mistake or abuse cannot run up a bill:
+website) sit in a higher pricing tier. Because details are fetched live per row
+on view, cost scales with how many prospects you look at — the app fetches only
+the rows on screen and caches them for the browser session to keep this in
+check. Configure these in Google Cloud so a mistake or abuse cannot run up a
+bill:
 
 - **Daily quota** — APIs & Services → **Places API (New)** → **Quotas & System
-  Limits** → filter for **`SearchText` requests per day** (the only method this
-  app calls) → set a low cap (e.g. `1,000/day`). One full ten-city search is
-  roughly 30 requests.
+  Limits** → set low daily caps on both **`SearchText`** (search) and
+  **`GetPlace`** (the live Place Details lookups this app now makes on view).
 - **Budget alert** — **Billing → Budgets & alerts → Create budget** (e.g.
   `$10/month`, alerts at 50 / 90 / 100%).
 - Restrict the API key to **Places API (New)** (APIs & Services → Credentials →
@@ -96,8 +123,9 @@ against the Places quota.
 
 ```
 app/                    Next.js App Router
-  api/                  route handlers: config, search, prospects(+update),
-                        enrich, export, health, auth/(login|logout)
+  api/                  route handlers: config, search, prospects(+update,
+                        +details, +cleanup-closed), enrich, market, geo,
+                        segments, health, auth/(login|logout)
   login/                the password gate page
   page.tsx              the console (search, table, filters, editing)
 middleware.ts           auth gate for all pages + /api/* (except login/auth)

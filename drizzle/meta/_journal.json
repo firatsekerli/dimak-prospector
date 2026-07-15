@@ -43,6 +43,13 @@
       "when": 1784053411710,
       "tag": "0005_drop_rating_reviews",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784149553193,
+      "tag": "0006_strip_google_content",
+      "breakpoints": true
     }
   ]
 }

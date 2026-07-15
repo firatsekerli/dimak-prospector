@@ -1,55 +1,49 @@
 import { NextResponse } from "next/server";
-import { and, eq, like, ilike, or, asc, sql } from "drizzle-orm";
+import { and, eq, like, asc, desc } from "drizzle-orm";
 import { getDb } from "@/db";
 import { prospects } from "@/db/schema";
-import { STATUSES } from "@/lib/config";
-import { waLink } from "@/lib/format";
 import { cleanEmailsField } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
 /**
- * GET /api/prospects?country=&segment=&status=&q=
- * Returns { rows, total, counts } where counts is per status over the filtered
- * set. `segment` matches as a substring (a company may carry several tags).
+ * GET /api/prospects?country=&segment=&status=
+ *
+ * Returns the stored leads (place_id + the user's own data). Only fields we
+ * actually store can be filtered here: country, segment, status. Filtering by
+ * category, website or company name happens on the client over the live
+ * Place Details data, since those fields are never stored.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const country = searchParams.get("country");
   const segment = searchParams.get("segment");
-  const category = searchParams.get("category");
   const status = searchParams.get("status");
-  const website = searchParams.get("website");
-  const q = searchParams.get("q");
 
   const conditions = [];
   if (country && country !== "All") conditions.push(eq(prospects.country, country));
   if (segment && segment !== "All") conditions.push(like(prospects.segment, `%${segment}%`));
-  if (category && category !== "All") conditions.push(eq(prospects.category, category));
   if (status && status !== "All") conditions.push(eq(prospects.status, status));
-  if (website === "Has site") conditions.push(sql`coalesce(${prospects.website}, '') <> ''`);
-  else if (website === "No site") conditions.push(sql`coalesce(${prospects.website}, '') = ''`);
-  if (q) {
-    conditions.push(
-      or(ilike(prospects.company, `%${q}%`), ilike(prospects.city, `%${q}%`))
-    );
-  }
 
   const db = getDb();
   const rows = await db
-    .select()
+    .select({
+      placeId: prospects.placeId,
+      segment: prospects.segment,
+      country: prospects.country,
+      city: prospects.city,
+      emails: prospects.emails,
+      status: prospects.status,
+      notes: prospects.notes,
+      source: prospects.source,
+      createdAt: prospects.createdAt,
+      updatedAt: prospects.updatedAt,
+    })
     .from(prospects)
     .where(conditions.length ? and(...conditions) : undefined)
-    .orderBy(asc(prospects.country), asc(prospects.city), asc(prospects.company));
+    .orderBy(asc(prospects.country), asc(prospects.city), desc(prospects.createdAt));
 
-  const out = rows.map((r) => ({
-    ...r,
-    emails: cleanEmailsField(r.emails),
-    wa: waLink(r.phone),
-  }));
-
-  const counts: Record<string, number> = Object.fromEntries(STATUSES.map((s) => [s, 0]));
-  for (const r of out) counts[r.status] = (counts[r.status] ?? 0) + 1;
+  const out = rows.map((r) => ({ ...r, emails: cleanEmailsField(r.emails) }));
 
   // Distinct countries across the whole table (unfiltered) for the filter list.
   const distinctCountries = await db
@@ -58,11 +52,5 @@ export async function GET(request: Request) {
     .orderBy(asc(prospects.country));
   const allCountries = distinctCountries.map((d) => d.country).filter((c): c is string => !!c);
 
-  const distinctCategories = await db
-    .selectDistinct({ category: prospects.category })
-    .from(prospects)
-    .orderBy(asc(prospects.category));
-  const allCategories = distinctCategories.map((d) => d.category).filter((c): c is string => !!c);
-
-  return NextResponse.json({ rows: out, total: out.length, counts, allCountries, allCategories });
+  return NextResponse.json({ rows: out, total: out.length, allCountries });
 }

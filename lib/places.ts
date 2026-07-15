@@ -44,8 +44,9 @@ const DETAILS_FIELD_MASK = [
 ].join(",");
 
 /**
- * Fetch fresh details for a single known place_id (Place Details New). Used by
- * the ≤30-day refresh cache. Returns null on 404/error so the caller can decide.
+ * Fetch live details for a single known place_id (Place Details New). This is
+ * the on-view lookup that renders business content in the browser without ever
+ * storing it. Returns null on 404/error so the caller can skip that row.
  */
 export async function placeDetails(placeId: string, apiKey: string): Promise<PlaceHit | null> {
   const res = await fetch(`https://places.googleapis.com/v1/places/${encodeURIComponent(placeId)}`, {

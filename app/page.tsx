@@ -9,6 +9,8 @@ import type {
   GeoResponse,
   CitiesResponse,
   CityRow,
+  LiveDetails,
+  DetailsResponse,
 } from "@/lib/types";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -26,8 +28,12 @@ const usdCompact = new Intl.NumberFormat("en", {
 });
 const fmtUSD = (v: number | null) => (v == null ? "—" : usdCompact.format(v));
 
+// Server-side filters (backed by stored columns) vs. client-side filters
+// (evaluated over the live Place Details data, which is never stored).
 type Filters = { country: string; segment: string; category: string; status: string; website: string; q: string };
 const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", category: "All", status: "All", website: "All", q: "" };
+const SERVER_KEYS = new Set<keyof Filters>(["country", "segment", "status"]);
+const DETAILS_CHUNK = 60;
 
 export default function Console() {
   const [config, setConfig] = useState<Config | null>(null);
@@ -49,6 +55,13 @@ export default function Console() {
 
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [data, setData] = useState<ProspectsResponse | null>(null);
+
+  // Live business content, keyed by place_id — fetched on view, never stored.
+  const [details, setDetails] = useState<Record<string, LiveDetails>>({});
+  const detailsRef = useRef<Record<string, LiveDetails>>({});
+  const inFlightRef = useRef<Set<string>>(new Set());
+  const [detailsBusy, setDetailsBusy] = useState(false);
+
   const [enriching, setEnriching] = useState<Record<string, boolean>>({});
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
@@ -56,14 +69,44 @@ export default function Console() {
   const [hsCode, setHsCode] = useState("730830");
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState("");
-  const qTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const reload = useCallback(async (f: Filters): Promise<ProspectsResponse> => {
-    const params = new URLSearchParams(f as unknown as Record<string, string>);
-    const res: ProspectsResponse = await (await fetch("/api/prospects?" + params)).json();
-    setData(res);
-    return res;
+  // Fetch live Place Details for any place_ids we don't already have (and aren't
+  // already fetching), chunked to bound each request. Merges into the cache.
+  const fetchDetails = useCallback(async (ids: string[]) => {
+    const missing = [...new Set(ids)].filter(
+      (id) => id && !(id in detailsRef.current) && !inFlightRef.current.has(id)
+    );
+    if (missing.length === 0) return;
+    missing.forEach((id) => inFlightRef.current.add(id));
+    setDetailsBusy(true);
+    try {
+      for (let i = 0; i < missing.length; i += DETAILS_CHUNK) {
+        const chunk = missing.slice(i, i + DETAILS_CHUNK);
+        const res = await fetch("/api/prospects/details", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ placeIds: chunk }),
+        });
+        const d: DetailsResponse = await res.json();
+        detailsRef.current = { ...detailsRef.current, ...(d.details ?? {}) };
+        setDetails(detailsRef.current);
+      }
+    } finally {
+      missing.forEach((id) => inFlightRef.current.delete(id));
+      setDetailsBusy(inFlightRef.current.size > 0);
+    }
   }, []);
+
+  const reload = useCallback(
+    async (f: Filters): Promise<ProspectsResponse> => {
+      const params = new URLSearchParams({ country: f.country, segment: f.segment, status: f.status });
+      const res: ProspectsResponse = await (await fetch("/api/prospects?" + params)).json();
+      setData(res);
+      void fetchDetails(res.rows.map((r) => r.placeId)); // stream in live content
+      return res;
+    },
+    [fetchDetails]
+  );
 
   const loadMarket = useCallback(async (code: string, hs: string) => {
     if (!code) return;
@@ -120,21 +163,39 @@ export default function Console() {
     return [...set];
   }, [data, filters.country]);
   const filterSegments = useMemo(() => ["All", ...segments], [segments]);
-  const filterCategories = useMemo(
-    () => ["All", ...(data?.allCategories ?? [])],
-    [data]
-  );
-  const exportFilteredHref = useMemo(() => {
-    const p = new URLSearchParams();
-    if (filters.country !== "All") p.set("country", filters.country);
-    if (filters.segment !== "All") p.set("segment", filters.segment);
-    if (filters.category !== "All") p.set("category", filters.category);
-    if (filters.status !== "All") p.set("status", filters.status);
-    if (filters.website !== "All") p.set("website", filters.website);
-    if (filters.q) p.set("q", filters.q);
-    const s = p.toString();
-    return "/api/export" + (s ? "?" + s : "");
-  }, [filters]);
+  // Categories come from the live details we've loaded, not the DB.
+  const filterCategories = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of data?.rows ?? []) {
+      const cat = details[r.placeId]?.category;
+      if (cat) set.add(cat);
+    }
+    return ["All", ...[...set].sort()];
+  }, [data, details]);
+
+  // Client-side view: apply the filters that depend on live content.
+  const displayedRows = useMemo(() => {
+    const rows = data?.rows ?? [];
+    const { category, website, q } = filters;
+    const needle = q.trim().toLowerCase();
+    return rows.filter((r) => {
+      const d = details[r.placeId];
+      if (category !== "All" && (!d || d.category !== category)) return false;
+      if (website === "Has site" && (!d || !d.website)) return false;
+      if (website === "No site" && (!d || !!d.website)) return false;
+      if (needle) {
+        const hay = `${d?.company ?? ""} ${r.city ?? ""}`.toLowerCase();
+        if (!hay.includes(needle)) return false;
+      }
+      return true;
+    });
+  }, [data, details, filters]);
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = Object.fromEntries((config?.statuses ?? []).map((s) => [s, 0]));
+    for (const r of displayedRows) c[r.status] = (c[r.status] ?? 0) + 1;
+    return c;
+  }, [displayedRows, config]);
 
   const addSegment = async () => {
     const name = newSegment.trim();
@@ -196,26 +257,34 @@ export default function Console() {
     reload(DEFAULT_FILTERS);
   };
 
+  // Re-pull live business content from Google for the current list (a "hard
+  // refresh" — clears the in-memory cache and fetches fresh).
+  const refreshLive = () => {
+    detailsRef.current = {};
+    inFlightRef.current = new Set();
+    setDetails({});
+    void fetchDetails((data?.rows ?? []).map((r) => r.placeId));
+  };
+
+  // Check every saved place_id against Google and delete the permanently-closed
+  // ones. Compliant: we only store place_ids, and this fetches status live.
   async function runCleanup() {
     if (
       !window.confirm(
-        "Refresh saved businesses against Google — updates their details and removes permanently-closed ones?\n\nThis makes one billed Places call per business refreshed."
+        "Check every saved business against Google and remove the permanently-closed ones?\n\nThis makes one Places lookup per saved business."
       )
     )
       return;
     setCleanupBusy(true);
-    setCleanupMsg("Refreshing businesses against Google…");
+    setCleanupMsg("Checking businesses against Google…");
     try {
-      const res = await fetch("/api/prospects/refresh", { method: "POST" });
+      const res = await fetch("/api/prospects/cleanup-closed", { method: "POST" });
       const d = await res.json();
       if (!res.ok) {
-        setCleanupMsg(d.error || "Refresh failed.");
+        setCleanupMsg(d.error || "Cleanup failed.");
         return;
       }
-      setCleanupMsg(
-        `Refreshed ${d.updated}, removed ${d.removed} closed (of ${d.checked} checked` +
-          (d.remaining ? `, ${d.remaining} left for the weekly refresh).` : ").")
-      );
+      setCleanupMsg(`Removed ${d.removed} permanently-closed (of ${d.checked} checked).`);
       await reload(filters);
     } catch {
       setCleanupMsg("Could not reach the server. Please try again.");
@@ -232,14 +301,9 @@ export default function Console() {
   const changeFilter = (key: keyof Filters, value: string) => {
     const next = { ...filters, [key]: value };
     setFilters(next);
-    reload(next);
+    if (SERVER_KEYS.has(key)) reload(next); // client-only filters just re-render
   };
-  const changeFind = (value: string) => {
-    const next = { ...filters, q: value };
-    setFilters(next);
-    if (qTimer.current) clearTimeout(qTimer.current);
-    qTimer.current = setTimeout(() => reload(next), 300);
-  };
+  const changeFind = (value: string) => setFilters((f) => ({ ...f, q: value }));
 
   async function save(placeId: string, fields: { status?: string; notes?: string; segment?: string }) {
     await fetch("/api/prospects/update", {
@@ -261,22 +325,26 @@ export default function Console() {
         : prev
     );
 
-  const enrichOne = useCallback(async (placeId: string): Promise<string> => {
-    setEnriching((prev) => ({ ...prev, [placeId]: true }));
-    try {
-      const res = await fetch("/api/enrich", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ place_id: placeId }),
-      });
-      const d = await res.json();
-      const emails: string = d.emails ?? "";
-      patchEmails(placeId, emails);
-      return emails;
-    } finally {
-      setEnriching((prev) => ({ ...prev, [placeId]: false }));
-    }
-  }, []);
+  const enrichOne = useCallback(
+    async (placeId: string): Promise<string> => {
+      setEnriching((prev) => ({ ...prev, [placeId]: true }));
+      try {
+        const res = await fetch("/api/enrich", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          // Pass the website we already loaded so enrich need not re-bill Details.
+          body: JSON.stringify({ place_id: placeId, website: detailsRef.current[placeId]?.website ?? "" }),
+        });
+        const d = await res.json();
+        const emails: string = d.emails ?? "";
+        patchEmails(placeId, emails);
+        return emails;
+      } finally {
+        setEnriching((prev) => ({ ...prev, [placeId]: false }));
+      }
+    },
+    []
+  );
 
   async function refreshMarket() {
     if (!selectedCountry?.isoNumeric) {
@@ -339,7 +407,11 @@ export default function Console() {
       }
 
       if (enrich && latest) {
-        const todo = latest.rows.filter((r) => r.website && !(r.emails ?? "").length);
+        // Need live details to know which prospects have a website.
+        await fetchDetails(latest.rows.map((r) => r.placeId));
+        const todo = latest.rows.filter(
+          (r) => detailsRef.current[r.placeId]?.website && !(r.emails ?? "").length
+        );
         for (let i = 0; i < todo.length; i++) {
           setSearchMsg(`Looking up emails ${i + 1}/${todo.length}…`);
           await enrichOne(todo[i].placeId);
@@ -354,7 +426,6 @@ export default function Console() {
     }
   }
 
-  const rows = data?.rows ?? [];
   const label = "mb-1 block text-[11px] tracking-[0.05em] text-steel";
 
   return (
@@ -584,14 +655,12 @@ export default function Console() {
 
         {/* Stats strip + actions (buttons aligned to the bottom) */}
         <div className="mb-3.5 flex flex-wrap items-end gap-2">
-          <Stat label="SHOWING" value={data?.total ?? 0} />
+          <Stat label="SHOWING" value={displayedRows.length} />
           {config?.statuses.map((s) => (
-            <Stat key={s} label={s.toUpperCase()} value={data?.counts[s] ?? 0} />
+            <Stat key={s} label={s.toUpperCase()} value={counts[s] ?? 0} />
           ))}
           <div className="ml-auto flex flex-wrap gap-2">
             <button onClick={showAll} className="btn btn-ghost">Show all</button>
-            <a href="/api/export" className="btn btn-ghost">Export all</a>
-            <a href={exportFilteredHref} className="btn btn-ghost">Export filtered</a>
           </div>
         </div>
 
@@ -608,24 +677,31 @@ export default function Console() {
           </div>
         </div>
 
-        {/* Utility row: email-lookup toggle + prune permanently-closed */}
+        {/* Utility row: email-lookup toggle + live-data controls */}
         <div className="mb-2 flex flex-wrap items-center gap-4">
           <label className="clickable flex items-center gap-1.5 text-xs text-steel" title="After a search, fetch public emails from each company website">
             <input type="checkbox" checked={enrich} onChange={(e) => setEnrich(e.target.checked)} />
             Look up emails after search <span className="text-mute">(slower)</span>
           </label>
           <button
+            onClick={refreshLive}
+            disabled={detailsBusy || (data?.rows.length ?? 0) === 0}
+            className="text-xs text-mute underline-offset-2 hover:text-ember-dk hover:underline disabled:opacity-50"
+          >
+            {detailsBusy ? "Loading live data…" : "Refresh live data"}
+          </button>
+          <button
             onClick={runCleanup}
             disabled={cleanupBusy}
             className="text-xs text-mute underline-offset-2 hover:text-ember-dk hover:underline disabled:opacity-50"
           >
-            {cleanupBusy ? "Refreshing…" : "Refresh & clean saved data"}
+            {cleanupBusy ? "Checking…" : "Remove permanently-closed"}
           </button>
           {cleanupMsg && <span className="text-xs text-mute">{cleanupMsg}</span>}
         </div>
 
         {/* Results table */}
-        {rows.length === 0 ? (
+        {displayedRows.length === 0 ? (
           <div className="border border-line bg-panel p-10 text-center text-mute">
             {data
               ? "No prospects match. Adjust the filters or run a search."
@@ -644,10 +720,11 @@ export default function Console() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map((r) => (
+                {displayedRows.map((r) => (
                   <Row
                     key={r.placeId}
                     r={r}
+                    d={details[r.placeId]}
                     statuses={config?.statuses ?? []}
                     segments={segments}
                     enriching={!!enriching[r.placeId]}
@@ -662,10 +739,11 @@ export default function Console() {
           </div>
         )}
 
-        {rows.length > 0 && (
+        {displayedRows.length > 0 && (
           <p className="mt-2.5 text-[11px] text-mute">
-            Phone numbers are shown exactly as Google Places provides them. The WhatsApp
-            link is generated from that number and may not be registered on WhatsApp.
+            Business names, phones, websites and addresses are fetched live from Google
+            when a row is shown — they are not stored. The WhatsApp link is generated
+            from the phone number and may not be registered on WhatsApp.
           </p>
         )}
       </main>
@@ -719,6 +797,7 @@ function FilterSelect({
 
 function Row({
   r,
+  d,
   statuses,
   segments,
   enriching,
@@ -728,6 +807,7 @@ function Row({
   onTag,
 }: {
   r: ProspectRow;
+  d: LiveDetails | undefined;
   statuses: string[];
   segments: string[];
   enriching: boolean;
@@ -740,19 +820,26 @@ function Row({
   const tags = (r.segment ?? "").split(" | ").filter(Boolean);
   const addable = segments.filter((s) => !tags.includes(s));
   const cell = "border-b border-line p-2.5 align-top";
+  const closed = d?.businessStatus === "CLOSED_PERMANENTLY";
+  const loading = !d;
   return (
     <tr>
       <td className={cell}>
-        <div className="font-semibold">{r.company}</div>
-        {r.category && <div className="text-xs text-mute">{r.category}</div>}
+        {loading ? (
+          <div className="font-semibold text-mute">Loading…</div>
+        ) : (
+          <div className="font-semibold">{d.company || <span className="text-mute">—</span>}</div>
+        )}
+        {d?.category && <div className="text-xs text-mute">{d.category}</div>}
+        {closed && <div className="text-xs font-semibold text-status-nofit">Permanently closed</div>}
         <div className="mt-0.5 flex gap-2 text-xs">
-          {r.googleMapsUrl && (
-            <a href={r.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+          {d?.googleMapsUrl && (
+            <a href={d.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
               map
             </a>
           )}
-          {r.website && (
-            <a href={r.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+          {d?.website && (
+            <a href={d.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
               site
             </a>
           )}
@@ -794,16 +881,18 @@ function Row({
         <div className="text-xs text-mute">{r.city}</div>
       </td>
 
-      {/* Contact details: phone + WhatsApp/site + email in one column */}
+      {/* Contact details: phone + WhatsApp/site + email in one column (live) */}
       <td className={cell}>
-        <div className="font-mono text-xs">{r.phone || <span className="text-mute">—</span>}</div>
-        {r.wa && (
+        <div className="font-mono text-xs">
+          {loading ? <span className="text-mute">…</span> : d.phone || <span className="text-mute">—</span>}
+        </div>
+        {d?.wa && (
           <div className="mt-1 text-xs">
             <a
-              href={r.wa}
+              href={d.wa}
               target="_blank"
               rel="noopener noreferrer"
-              title="WhatsApp link generated from the phone number above (via Google Places). The number may not be registered on WhatsApp."
+              title="WhatsApp link generated from the phone number (via Google Places). The number may not be registered on WhatsApp."
               aria-label="Open WhatsApp for this phone number (may not be registered on WhatsApp)"
               className="text-ember-dk hover:underline"
             >
@@ -818,7 +907,7 @@ function Row({
                 {e}
               </a>
             ))
-          ) : r.website ? (
+          ) : d?.website ? (
             <button
               onClick={() => onFind(r.placeId)}
               disabled={enriching}

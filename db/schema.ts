@@ -9,31 +9,32 @@ import {
 } from "drizzle-orm/pg-core";
 
 /**
- * `prospects` — one row per Google Places business, deduped by place_id.
- * Mirrors the data model in CLAUDE.md and the prototype's SQLite table in
- * reference/app.py. `segment` may hold several tags joined by " | ".
- * `status` and `notes` are user-owned and must never be clobbered on a re-find.
+ * `prospects` — one saved lead, keyed by the Google Places `place_id`.
+ *
+ * Google's Maps Platform terms permit storing the `place_id` indefinitely but
+ * NOT caching the business content (name, phone, website, address, category)
+ * beyond the narrow lat/lng exception. So this table stores ONLY:
+ *   - the place_id (the permanent, storable dedup key),
+ *   - the search context the USER supplied (country + city they searched),
+ *   - the user's own pipeline data (segment tags, status, notes),
+ *   - emails we extracted from the company's own public website (not Google).
+ *
+ * The business name, phone, website, address and category are never stored;
+ * they are fetched live from Place Details when a row is shown (see
+ * /api/prospects/details). `status`/`notes`/`segment` are user-owned and must
+ * never be clobbered on a re-find.
  */
 export const prospects = pgTable("prospects", {
-  placeId: text("place_id").primaryKey(), // Google Places id, the dedup key
-  company: text("company"),
-  segment: text("segment"),
-  country: text("country"),
-  city: text("city"),
-  category: text("category"),
-  address: text("address"),
-  phone: text("phone"),
-  website: text("website"),
-  emails: text("emails"), // found addresses joined by " | "
-  googleMapsUrl: text("google_maps_url"),
+  placeId: text("place_id").primaryKey(), // Google Places id — storable indefinitely
+  segment: text("segment"), // user-defined tags, " | "-joined
+  country: text("country"), // the country the user searched (their input, not Google's)
+  city: text("city"), // the city the user searched
+  emails: text("emails"), // extracted from the company website (our data), " | "-joined
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
   notes: text("notes").notNull().default(""),
   source: text("source"), // e.g. 'Google Places'
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
-  // When the Google-sourced fields were last fetched (for the ≤30-day refresh
-  // cache required by the Places terms). User data is never expired by this.
-  contentRefreshedAt: timestamp("content_refreshed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export type Prospect = typeof prospects.$inferSelect;
@@ -97,7 +98,7 @@ export type GeoCityRow = typeof geoCities.$inferSelect;
 
 /**
  * User-defined segments (labels the user creates and tags businesses with).
- * Distinct from `prospects.category` (Google's business-selected primary type).
+ * Distinct from a business's Google category (which is fetched live, not stored).
  * A prospect's applied tags stay in `prospects.segment` (" | "-joined).
  */
 export const segments = pgTable("segments", {

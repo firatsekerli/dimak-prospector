@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { AUTH_COOKIE, verifyToken } from "@/lib/auth";
 
-// Paths reachable without a valid session (the login page + its auth routes,
-// and the cron endpoint which is protected by CRON_SECRET instead).
-const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout", "/api/cron"];
+// Paths reachable without a valid session (the login page + its auth routes).
+const PUBLIC_PATHS = ["/login", "/api/auth/login", "/api/auth/logout"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;

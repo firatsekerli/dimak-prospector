@@ -71,18 +71,15 @@ export async function POST(request: Request) {
     if (!h.placeId || seen.has(h.placeId)) continue;
     if (h.businessStatus === "CLOSED_PERMANENTLY") continue; // skip permanently closed
     seen.add(h.placeId);
+    // Store ONLY the place_id + the user's search context + tag. The business
+    // content (name, phone, website, address, category) is deliberately NOT
+    // stored — it is fetched live from Place Details when the row is shown.
     values.push({
       placeId: h.placeId,
-      company: h.company,
       segment,
       country: countryName,
       city,
-      category: h.category,
-      address: h.address,
-      phone: h.phone,
-      website: h.website,
       emails: "",
-      googleMapsUrl: h.googleMapsUrl,
       source: "Google Places",
     });
   }
@@ -110,10 +107,7 @@ export async function POST(request: Request) {
           ) tags
           WHERE trim(tag) <> ''
         )`,
-        phone: sql`excluded.phone`,
-        website: sql`excluded.website`,
         updatedAt: sql`now()`,
-        contentRefreshedAt: sql`now()`, // re-find counts as a fresh fetch
         // status and notes intentionally omitted — never clobbered on a re-find.
       },
     })

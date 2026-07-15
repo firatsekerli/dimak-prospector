@@ -7,35 +7,42 @@ export type Config = {
   statuses: string[];
 };
 
-// Shape of a row from GET /api/prospects (Drizzle columns + the wa link).
+// A stored lead from GET /api/prospects — only the fields we persist (place_id
+// + the user's own data). Business content is NOT here; it is fetched live.
 // Timestamps arrive as ISO strings over JSON.
 export type ProspectRow = {
   placeId: string;
-  company: string | null;
   segment: string | null;
   country: string | null;
   city: string | null;
-  category: string | null;
-  address: string | null;
-  phone: string | null;
-  website: string | null;
   emails: string | null;
-  googleMapsUrl: string | null;
   status: string;
   notes: string;
   source: string | null;
   createdAt: string;
   updatedAt: string;
-  wa: string;
 };
 
 export type ProspectsResponse = {
   rows: ProspectRow[];
   total: number;
-  counts: Record<string, number>;
   allCountries: string[]; // distinct countries present in the whole table
-  allCategories: string[]; // distinct Google categories present
 };
+
+// Live business content for one place_id from POST /api/prospects/details.
+// Fetched from Google Place Details on view and never stored.
+export type LiveDetails = {
+  company: string;
+  category: string;
+  address: string;
+  phone: string;
+  website: string;
+  googleMapsUrl: string;
+  businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
+  wa: string;
+};
+
+export type DetailsResponse = { details: Record<string, LiveDetails> };
 
 // v3 — geography cascade (GET /api/geo, GET /api/geo/cities)
 export type GeoCountry = { code: string; name: string; isoNumeric: number | null };
