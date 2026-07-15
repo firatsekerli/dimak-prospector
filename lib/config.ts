@@ -16,27 +16,25 @@ export const CITIES: City[] = [
   { city: "Manama", country: "Bahrain", region: "BH" },
 ];
 
+// Generic starter labels/terms. Segments are user-defined at runtime (stored in
+// the DB); these are just neutral fallbacks exposed by /api/config.
 export const SEGMENTS = [
   "Distributor / Trading",
-  "Contractor (general / fit-out)",
-  "Architect / Specifier",
+  "Contractor",
+  "Specifier",
   "Facility / FM",
 ];
 
 export const TERM_SUGGESTIONS = [
-  "fire door supplier",
-  "fire rated door distributor",
-  "steel door supplier",
-  "doors and hardware supplier",
-  "building materials trading company",
-  "architectural hardware supplier",
-  "fit out contractor",
-  "interior fit out company",
-  "joinery contractor",
+  "distributor",
+  "trading company",
+  "wholesaler",
+  "supplier",
+  "importer",
+  "contractor",
   "general contracting company",
-  "architecture firm",
-  "architectural consultant",
-  "facilities management company",
+  "consultant",
+  "manufacturer",
 ];
 
 export const STATUSES = ["New", "Contacted", "Replied", "Not a fit"];

@@ -1,7 +1,7 @@
 // Minimal shared-password auth. Edge-safe (Web Crypto only, no Node built-ins)
 // so it works in both middleware and route handlers.
 
-export const AUTH_COOKIE = "dimak_auth";
+export const AUTH_COOKIE = "prospector_auth";
 export const AUTH_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, in seconds
 
 const encoder = new TextEncoder();

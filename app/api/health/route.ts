@@ -16,7 +16,7 @@ export async function GET() {
     table: string;
   } = {
     ok: true,
-    app: "dimak-prospector",
+    app: "prospector",
     phase: 7,
     db: "unknown",
     table: "unknown",

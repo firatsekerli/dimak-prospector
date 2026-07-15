@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Brand, SiteFooter, AdSlot } from "@/components/branding";
 import type {
   Config,
   ProspectRow,
@@ -457,9 +458,8 @@ export default function Console() {
 
   return (
     <>
-      <header className="flex items-baseline gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
-        <h1 className="text-[17px] font-bold uppercase tracking-[0.14em]">DİMAK Prospector</h1>
-        <span className="text-xs tracking-[0.03em] text-[#9aa3af]">Fire door lead pipeline</span>
+      <header className="flex items-center gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
+        <Brand />
         <button
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" });
@@ -470,6 +470,8 @@ export default function Console() {
           Log out
         </button>
       </header>
+
+      <AdSlot />
 
       <main className="mx-auto w-full max-w-[1220px] px-[22px] pb-16 pt-5">
         {/* Search panel */}
@@ -508,7 +510,7 @@ export default function Console() {
                 value={keyword}
                 onChange={(e) => setKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && runSearch()}
-                placeholder="e.g. fire door supplier"
+                placeholder="e.g. distributor, contractor, supplier…"
                 className="control w-full"
               />
             </div>
@@ -774,6 +776,8 @@ export default function Console() {
           </p>
         )}
       </main>
+
+      <SiteFooter />
 
       {notesFor && (
         <NotesModal

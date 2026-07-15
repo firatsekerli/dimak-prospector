@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 /*
-  Dimak Prospector design tokens.
-  Steel + ink neutrals with a single ember accent (Dimak's brand orange).
+  Design tokens. Steel + ink neutrals with a single configurable accent (the
+  "ember" variables, overridable per deployment via NEXT_PUBLIC_ACCENT).
 */
 :root {
   --bg: #eef1f4;

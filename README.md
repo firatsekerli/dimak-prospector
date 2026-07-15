@@ -1,20 +1,18 @@
-# Dimak Prospector
+# Prospector
 
-A lead-generation web app for Dimak Kapi's Gulf fire door export. Search live
-company data from the Google Places API, review prospects, and track who has
-been contacted.
+A white-label B2B lead-generation web app. Search live company data from the
+Google Places API, review prospects, tag and segment them, track who has been
+contacted, and see per-country import statistics from UN Comtrade.
 
 Business content (name, phone, website, address, category) is **never stored**
 — only the Google `place_id` and your own pipeline data are saved, and the
 business details are fetched live from Google when a row is shown. See
 [Data storage & Google Places compliance](#data-storage--google-places-compliance).
 
-This is the deployable rebuild of the local Flask/SQLite prototype in
-`reference/`. Stack: **Next.js (App Router) + TypeScript + Tailwind CSS**, with
-**Neon Postgres via Drizzle ORM**, deployed on **Vercel** from GitHub.
-
-> **Status:** Phase 1 (scaffold + deploy pipeline). See `CLAUDE.md` for the full
-> spec and the phased build plan.
+Stack: **Next.js (App Router) + TypeScript + Tailwind CSS**, with **Neon Postgres
+via Drizzle ORM**, deployed on **Vercel** from GitHub. Branding (name, logo,
+accent color, footer, ads) is set per deployment via env vars — see
+[Branding & white-label](#branding--white-label).
 
 ## Local development
 
@@ -39,6 +37,28 @@ production. Never commit real values (`.env.local` is gitignored).
 | `AUTH_SECRET`            | Random string used to sign the auth cookie                     |
 
 See `.env.example` for the template.
+
+## Branding & white-label
+
+The app ships unbranded and is re-skinned per deployment through `NEXT_PUBLIC_*`
+env vars (baked in at build time — change them and redeploy). Nothing in the code
+is tied to a specific company.
+
+| Variable                   | Purpose                                             |
+| -------------------------- | --------------------------------------------------- |
+| `NEXT_PUBLIC_APP_NAME`     | Header + browser title (default `Prospector`)       |
+| `NEXT_PUBLIC_APP_TAGLINE`  | Small subtitle (`""` hides it)                      |
+| `NEXT_PUBLIC_LOGO_URL`     | Logo image URL (omit for text-only)                 |
+| `NEXT_PUBLIC_ACCENT`       | Accent color hex (buttons, links, focus, header rule) |
+| `NEXT_PUBLIC_ACCENT_DARK`  | Accent hover/link shade                             |
+| `NEXT_PUBLIC_COMPANY_NAME` | Footer business name                                |
+| `NEXT_PUBLIC_COMPANY_URL`  | Footer link                                         |
+| `NEXT_PUBLIC_FOOTER_NOTE`  | Extra footer line (email/phone/etc.)                |
+| `NEXT_PUBLIC_SHOW_ADS`     | `"1"` shows the ad slot (ad-supported tier)         |
+
+- **White-label a customer:** set their name/logo/accent/footer, leave ads off.
+- **Ad-supported tier:** keep your own branding, set `NEXT_PUBLIC_SHOW_ADS=1`, and
+  drop your ad network's snippet into `AdSlot` in `components/branding.tsx`.
 
 ## Deploy (GitHub → Vercel)
 
