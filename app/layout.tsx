@@ -3,7 +3,8 @@ import "./globals.css";
 import { branding } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: branding.appName,
+  // Browser tab shows the brand name with the tagline beside it.
+  title: branding.tagline ? `${branding.appName} — ${branding.tagline}` : branding.appName,
   description: branding.tagline
     ? `${branding.appName} — ${branding.tagline}`
     : branding.appName,

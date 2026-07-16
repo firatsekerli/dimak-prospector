@@ -458,14 +458,14 @@ export default function Console() {
 
   return (
     <>
-      <header className="flex items-center gap-3.5 border-b-[3px] border-ember bg-ink px-[22px] py-3.5 text-white">
+      <header className="flex items-center gap-3.5 border-b-[3px] border-ember-dk bg-ember px-[22px] py-3.5 text-white">
         <Brand />
         <button
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" });
             window.location.href = "/login";
           }}
-          className="ml-auto text-xs text-[#9aa3af] hover:text-white"
+          className="ml-auto text-xs text-white/80 hover:text-white"
         >
           Log out
         </button>
