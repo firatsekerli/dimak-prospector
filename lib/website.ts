@@ -50,15 +50,53 @@ const CERTIFICATIONS: { label: string; re: RegExp }[] = [
   { label: "UL", re: /\bUL[\s-]?(listed|certified|classified)\b/i },
 ];
 
-// Company social profiles. LinkedIn is limited to /company/ pages so we never
-// capture a personal profile (/in/…), which would be personal data.
-const SOCIALS: { label: string; re: RegExp }[] = [
-  { label: "LinkedIn", re: /https?:\/\/(?:[a-z]{2,3}\.)?linkedin\.com\/company\/[A-Za-z0-9._%-]+/i },
-  { label: "Instagram", re: /https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9._]+/i },
-  { label: "Facebook", re: /https?:\/\/(?:www\.)?facebook\.com\/[A-Za-z0-9.\-/]+/i },
-  { label: "YouTube", re: /https?:\/\/(?:www\.)?youtube\.com\/(?:@|channel\/|c\/|user\/)[A-Za-z0-9._-]+/i },
-  { label: "X / Twitter", re: /https?:\/\/(?:www\.)?(?:twitter|x)\.com\/[A-Za-z0-9._]+/i },
-];
+// Generic/utility path segments that are NOT a company profile (share widgets,
+// login, locale roots like facebook.com/tr, etc.). Any social link whose first
+// path segment is one of these — or a bare 2-letter locale code — is ignored.
+const GENERIC_SEG = new Set([
+  "sharer", "sharer.php", "share.php", "share", "dialog", "plugins", "login", "signup",
+  "home", "help", "about", "privacy", "policy", "policies", "terms", "cookie", "cookies",
+  "intent", "i", "search", "hashtag", "explore", "p", "accounts", "l.php", "permalink.php",
+  "watch", "events", "groups", "profile.php", "tr.php", "reel", "story.php",
+]);
+
+function firstSeg(path: string): string {
+  return path.replace(/^\/+/, "").split(/[/?#]/)[0].toLowerCase();
+}
+function isRealHandle(seg: string): boolean {
+  if (!seg || seg.length < 2) return false;
+  if (GENERIC_SEG.has(seg)) return false;
+  if (/^[a-z]{2}$/.test(seg)) return false; // bare locale code, e.g. facebook.com/tr
+  return true;
+}
+
+// Pull at most one real profile per platform. LinkedIn is limited to /company/
+// pages so we never capture a personal profile (/in/…), which is personal data.
+function extractSocials(html: string): { label: string; url: string }[] {
+  const out: { label: string; url: string }[] = [];
+  const add = (label: string, url: string) => {
+    if (!out.some((o) => o.label === label)) out.push({ label, url });
+  };
+
+  for (const m of html.matchAll(/https?:\/\/(?:[a-z.]+\.)?linkedin\.com\/company\/([A-Za-z0-9._%-]+)/gi)) {
+    add("LinkedIn", `https://www.linkedin.com/company/${m[1]}`);
+    break;
+  }
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?instagram\.com\/([A-Za-z0-9._]+)/gi)) {
+    if (isRealHandle(m[1].toLowerCase())) { add("Instagram", `https://instagram.com/${m[1]}`); break; }
+  }
+  for (const m of html.matchAll(/https?:\/\/(?:[a-z-]+\.)?facebook\.com\/([A-Za-z0-9._%\-/]+)/gi)) {
+    if (isRealHandle(firstSeg(m[1]))) { add("Facebook", `https://facebook.com/${m[1].split(/[?#]/)[0]}`); break; }
+  }
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?youtube\.com\/((?:@|channel\/|c\/|user\/)[A-Za-z0-9._-]+)/gi)) {
+    add("YouTube", `https://youtube.com/${m[1]}`);
+    break;
+  }
+  for (const m of html.matchAll(/https?:\/\/(?:www\.)?(?:twitter|x)\.com\/([A-Za-z0-9._]+)/gi)) {
+    if (isRealHandle(m[1].toLowerCase())) { add("X / Twitter", `https://x.com/${m[1]}`); break; }
+  }
+  return out;
+}
 
 export interface WebsiteAnalysis {
   businessTypes: string[];
@@ -105,15 +143,7 @@ export async function analyzeWebsite(website: string): Promise<WebsiteAnalysis> 
     if (c.re.test(html) && !certifications.includes(c.label)) certifications.push(c.label);
   }
 
-  const socials: { label: string; url: string }[] = [];
-  const seen = new Set<string>();
-  for (const s of SOCIALS) {
-    const m = html.match(s.re);
-    if (m && !seen.has(s.label)) {
-      seen.add(s.label);
-      socials.push({ label: s.label, url: m[0] });
-    }
-  }
+  const socials = extractSocials(html);
 
   return { businessTypes, certifications, socials };
 }

@@ -7,10 +7,11 @@
 -- content (name, phone, website, address, category) is fetched live, never saved.
 CREATE TABLE IF NOT EXISTS "prospects" (
   "place_id"   text PRIMARY KEY,
-  "segment"    text,
-  "country"    text,
-  "city"       text,
-  "status"     text NOT NULL DEFAULT 'New',
+  "segment"       text,
+  "country"       text,
+  "city"          text,
+  "contact_email" text,
+  "status"        text NOT NULL DEFAULT 'New',
   "source"     text,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now()

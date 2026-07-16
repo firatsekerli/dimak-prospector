@@ -18,6 +18,7 @@ export type ProspectRow = {
   segment: string | null;
   country: string | null;
   city: string | null;
+  contactEmail: string | null; // manually entered by the user
   status: string;
   notes: ProspectNote[]; // timestamped note log, newest first
   source: string | null;

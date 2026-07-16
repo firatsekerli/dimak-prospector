@@ -17,6 +17,8 @@ import type {
   AnalyzeResponse,
 } from "@/lib/types";
 
+const isEmail = (s?: string | null) => !!s && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
+
 const STATUS_TEXT: Record<string, string> = {
   New: "text-status-new",
   Contacted: "text-status-contacted",
@@ -309,7 +311,7 @@ export default function Console() {
   };
   const changeFind = (value: string) => setFilters((f) => ({ ...f, q: value }));
 
-  async function save(placeId: string, fields: { status?: string; segment?: string }) {
+  async function save(placeId: string, fields: { status?: string; segment?: string; contactEmail?: string }) {
     await fetch("/api/prospects/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -319,6 +321,16 @@ export default function Console() {
   const onStatus = async (placeId: string, status: string) => {
     await save(placeId, { status });
     reload(filters);
+  };
+  // Manually-entered contact email (the user typed it themselves). Patch locally
+  // so the row doesn't reorder, then persist.
+  const onContactEmail = (placeId: string, contactEmail: string) => {
+    setData((prev) =>
+      prev
+        ? { ...prev, rows: prev.rows.map((r) => (r.placeId === placeId ? { ...r, contactEmail } : r)) }
+        : prev
+    );
+    save(placeId, { contactEmail });
   };
   // Note edits update just the affected row in place — no full reload, so the
   // list never re-sorts or jumps under the user while they're writing.
@@ -716,6 +728,7 @@ export default function Console() {
                     onStatus={onStatus}
                     onOpenNotes={() => setNotesFor(r.placeId)}
                     onAnalyze={() => setAnalyzeFor(r.placeId)}
+                    onContactEmail={onContactEmail}
                     onTag={onTag}
                   />
                 ))}
@@ -812,6 +825,7 @@ function Row({
   onStatus,
   onOpenNotes,
   onAnalyze,
+  onContactEmail,
   onTag,
 }: {
   r: ProspectRow;
@@ -821,6 +835,7 @@ function Row({
   onStatus: (placeId: string, status: string) => void;
   onOpenNotes: () => void;
   onAnalyze: () => void;
+  onContactEmail: (placeId: string, contactEmail: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
 }) {
   const tags = (r.segment ?? "").split(" | ").filter(Boolean);
@@ -915,6 +930,25 @@ function Row({
             </a>
           </div>
         )}
+        {/* Manually-entered contact email (the user typed it — their own data). */}
+        <div className="mt-1.5">
+          {isEmail(r.contactEmail) && (
+            <a href={`mailto:${r.contactEmail}`} className="mb-0.5 block font-mono text-xs text-ember-dk hover:underline">
+              {r.contactEmail}
+            </a>
+          )}
+          <input
+            key={`${r.placeId}:email`}
+            defaultValue={r.contactEmail ?? ""}
+            onBlur={(e) => {
+              if ((e.target.value.trim() || null) !== (r.contactEmail ?? null))
+                onContactEmail(r.placeId, e.target.value);
+            }}
+            placeholder="+ add email"
+            aria-label="Contact email"
+            className="control control-sm w-full font-mono text-[11px]"
+          />
+        </div>
       </td>
 
       <td className={cell}>

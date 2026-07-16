@@ -7,13 +7,14 @@ import { STATUSES } from "@/lib/config";
 export const dynamic = "force-dynamic";
 
 /**
- * POST /api/prospects/update  body { place_id, status?, segment? }
+ * POST /api/prospects/update  body { place_id, status?, segment?, contactEmail? }
  * Updates only the fields provided (so one edit never wipes another).
- * `segment` is the full " | "-joined tag string for the prospect. Bumps updated_at.
+ * `segment` is the full " | "-joined tag string for the prospect. `contactEmail`
+ * is a value the user typed in themselves (their own CRM data). Bumps updated_at.
  * Notes are managed separately via /api/prospects/notes (a timestamped log).
  */
 export async function POST(request: Request) {
-  let body: { place_id?: string; status?: string; segment?: string };
+  let body: { place_id?: string; status?: string; segment?: string; contactEmail?: string };
   try {
     body = await request.json();
   } catch {
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
   const set: {
     status?: string;
     segment?: string;
+    contactEmail?: string | null;
     updatedAt?: ReturnType<typeof sql>;
   } = {};
 
@@ -40,8 +42,11 @@ export async function POST(request: Request) {
   if (typeof body.segment === "string") {
     set.segment = body.segment;
   }
+  if (typeof body.contactEmail === "string") {
+    set.contactEmail = body.contactEmail.trim() || null;
+  }
 
-  if (set.status === undefined && set.segment === undefined) {
+  if (set.status === undefined && set.segment === undefined && set.contactEmail === undefined) {
     return NextResponse.json({ ok: true }); // nothing to change
   }
 
