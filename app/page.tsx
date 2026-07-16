@@ -843,6 +843,16 @@ function Row({
   const cell = "border-b border-line p-2.5 align-top";
   const closed = d?.businessStatus === "CLOSED_PERMANENTLY";
   const loading = !d;
+
+  // Manually-entered contact emails, stored as a " | "-joined list.
+  const emails = (r.contactEmail ?? "").split(" | ").map((s) => s.trim()).filter(Boolean);
+  const addEmail = (el: HTMLInputElement) => {
+    const v = el.value.trim();
+    if (!v || !isEmail(v)) return; // ignore empty / not-an-email (leave text to fix)
+    if (!emails.includes(v)) onContactEmail(r.placeId, [...emails, v].join(" | "));
+    el.value = "";
+  };
+
   return (
     <tr>
       <td className={cell}>
@@ -930,22 +940,33 @@ function Row({
             </a>
           </div>
         )}
-        {/* Manually-entered contact email (the user typed it — their own data). */}
-        <div className="mt-1.5">
-          {isEmail(r.contactEmail) && (
-            <a href={`mailto:${r.contactEmail}`} className="mb-0.5 block font-mono text-xs text-ember-dk hover:underline">
-              {r.contactEmail}
-            </a>
-          )}
+        {/* Manually-entered contact emails (the user typed them — their own data). */}
+        <div className="mt-1.5 space-y-1">
+          {emails.map((e) => (
+            <div key={e} className="flex items-center gap-1">
+              <a href={`mailto:${e}`} className="break-all font-mono text-xs text-ember-dk hover:underline">
+                {e}
+              </a>
+              <button
+                onClick={() => onContactEmail(r.placeId, emails.filter((x) => x !== e).join(" | "))}
+                className="text-[11px] text-mute hover:text-status-nofit"
+                aria-label={`Remove ${e}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
           <input
-            key={`${r.placeId}:email`}
-            defaultValue={r.contactEmail ?? ""}
-            onBlur={(e) => {
-              if ((e.target.value.trim() || null) !== (r.contactEmail ?? null))
-                onContactEmail(r.placeId, e.target.value);
+            key={`${r.placeId}:email:${emails.length}`}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter") {
+                ev.preventDefault();
+                addEmail(ev.currentTarget);
+              }
             }}
+            onBlur={(ev) => addEmail(ev.currentTarget)}
             placeholder="+ add email"
-            aria-label="Contact email"
+            aria-label="Add contact email"
             className="control control-sm w-full font-mono text-[11px]"
           />
         </div>
