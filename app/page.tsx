@@ -870,24 +870,28 @@ function Row({
   return (
     <tr>
       <td className={cell}>
-        {loading ? (
-          <div className="font-semibold text-mute">Loading…</div>
-        ) : (
-          <div className="font-semibold">{d.company || <span className="text-mute">—</span>}</div>
-        )}
-        {d?.category && <div className="text-xs text-mute">{d.category}</div>}
-        {closed && <div className="text-xs font-semibold text-status-nofit">Permanently closed</div>}
-        <div className="mt-0.5 flex gap-2 text-xs">
-          {d?.googleMapsUrl && (
-            <a href={d.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
-              map
-            </a>
+        {/* Cap the company column so long names wrap instead of squeezing the
+            rest of the row (keeps the phone on one line). */}
+        <div className="max-w-[320px] break-words">
+          {loading ? (
+            <div className="font-semibold text-mute">Loading…</div>
+          ) : (
+            <div className="font-semibold">{d.company || <span className="text-mute">—</span>}</div>
           )}
-          {d?.website && (
-            <a href={d.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
-              site
-            </a>
-          )}
+          {d?.category && <div className="text-xs text-mute">{d.category}</div>}
+          {closed && <div className="text-xs font-semibold text-status-nofit">Permanently closed</div>}
+          <div className="mt-0.5 flex gap-2 text-xs">
+            {d?.googleMapsUrl && (
+              <a href={d.googleMapsUrl} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+                map
+              </a>
+            )}
+            {d?.website && (
+              <a href={d.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+                site
+              </a>
+            )}
+          </div>
         </div>
       </td>
       <td className={cell}>
@@ -928,7 +932,7 @@ function Row({
 
       {/* Contact details: phone + WhatsApp/site + email in one column (live) */}
       <td className={cell}>
-        <div className="font-mono text-xs">
+        <div className="whitespace-nowrap font-mono text-xs">
           {loading ? <span className="text-mute">…</span> : d.phone || <span className="text-mute">—</span>}
         </div>
         {d?.wa && (
