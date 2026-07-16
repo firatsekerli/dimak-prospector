@@ -13,6 +13,8 @@ import type {
   CityRow,
   LiveDetails,
   DetailsResponse,
+  WebsiteAnalysis,
+  AnalyzeResponse,
 } from "@/lib/types";
 
 const STATUS_TEXT: Record<string, string> = {
@@ -50,7 +52,6 @@ export default function Console() {
   const [segments, setSegments] = useState<string[]>([]);
   const [newSegment, setNewSegment] = useState("");
   const [keyword, setKeyword] = useState("");
-  const [enrich, setEnrich] = useState(false);
 
   const [searching, setSearching] = useState(false);
   const [searchMsg, setSearchMsg] = useState("");
@@ -64,7 +65,7 @@ export default function Console() {
   const inFlightRef = useRef<Set<string>>(new Set());
   const [detailsBusy, setDetailsBusy] = useState(false);
 
-  const [enriching, setEnriching] = useState<Record<string, boolean>>({});
+  const [analyzeFor, setAnalyzeFor] = useState<string | null>(null); // placeId of the open analysis popup
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
   const [market, setMarket] = useState<MarketResponse | null>(null);
@@ -346,33 +347,6 @@ export default function Console() {
     patchNotes(placeId, (notes) => notes.filter((n) => n.id !== id));
   };
 
-  const patchEmails = (placeId: string, emails: string) =>
-    setData((prev) =>
-      prev
-        ? { ...prev, rows: prev.rows.map((r) => (r.placeId === placeId ? { ...r, emails } : r)) }
-        : prev
-    );
-
-  const enrichOne = useCallback(
-    async (placeId: string): Promise<string> => {
-      setEnriching((prev) => ({ ...prev, [placeId]: true }));
-      try {
-        const res = await fetch("/api/enrich", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // Pass the website we already loaded so enrich need not re-bill Details.
-          body: JSON.stringify({ place_id: placeId, website: detailsRef.current[placeId]?.website ?? "" }),
-        });
-        const d = await res.json();
-        const emails: string = d.emails ?? "";
-        patchEmails(placeId, emails);
-        return emails;
-      } finally {
-        setEnriching((prev) => ({ ...prev, [placeId]: false }));
-      }
-    },
-    []
-  );
 
   async function refreshMarket() {
     if (!selectedCountry?.isoNumeric) {
@@ -418,7 +392,6 @@ export default function Console() {
     let added = 0;
     let updated = 0;
     try {
-      let latest = data;
       for (let i = 0; i < selectedCities.length; i++) {
         const city = selectedCities[i].city;
         setSearchMsg(`Searching ${city} ${i + 1}/${selectedCities.length}…`);
@@ -431,19 +404,7 @@ export default function Console() {
         if (!res.ok) return setSearchMsg(d.error || `Search failed for ${city}.`);
         added += d.added ?? 0;
         updated += d.updated ?? 0;
-        latest = await reload(filters);
-      }
-
-      if (enrich && latest) {
-        // Need live details to know which prospects have a website.
-        await fetchDetails(latest.rows.map((r) => r.placeId));
-        const todo = latest.rows.filter(
-          (r) => detailsRef.current[r.placeId]?.website && !(r.emails ?? "").length
-        );
-        for (let i = 0; i < todo.length; i++) {
-          setSearchMsg(`Looking up emails ${i + 1}/${todo.length}…`);
-          await enrichOne(todo[i].placeId);
-        }
+        await reload(filters);
       }
 
       setSearchMsg(`Added ${added} new, refreshed ${updated}.`);
@@ -706,12 +667,8 @@ export default function Console() {
           </div>
         </div>
 
-        {/* Utility row: email-lookup toggle + live-data controls */}
+        {/* Utility row: live-data controls */}
         <div className="mb-2 flex flex-wrap items-center gap-4">
-          <label className="clickable flex items-center gap-1.5 text-xs text-steel" title="After a search, fetch public emails from each company website">
-            <input type="checkbox" checked={enrich} onChange={(e) => setEnrich(e.target.checked)} />
-            Look up emails after search <span className="text-mute">(slower)</span>
-          </label>
           <button
             onClick={refreshLive}
             disabled={detailsBusy || (data?.rows.length ?? 0) === 0}
@@ -756,10 +713,9 @@ export default function Console() {
                     d={details[r.placeId]}
                     statuses={config?.statuses ?? []}
                     segments={segments}
-                    enriching={!!enriching[r.placeId]}
                     onStatus={onStatus}
                     onOpenNotes={() => setNotesFor(r.placeId)}
-                    onFind={enrichOne}
+                    onAnalyze={() => setAnalyzeFor(r.placeId)}
                     onTag={onTag}
                   />
                 ))}
@@ -790,6 +746,14 @@ export default function Console() {
           onAdd={(body) => addNote(notesFor, body)}
           onDelete={(id) => deleteNote(notesFor, id)}
           onClose={() => setNotesFor(null)}
+        />
+      )}
+
+      {analyzeFor && (
+        <SiteAnalysisModal
+          title={details[analyzeFor]?.company || analyzeFor}
+          website={details[analyzeFor]?.website || ""}
+          onClose={() => setAnalyzeFor(null)}
         />
       )}
     </>
@@ -845,23 +809,20 @@ function Row({
   d,
   statuses,
   segments,
-  enriching,
   onStatus,
   onOpenNotes,
-  onFind,
+  onAnalyze,
   onTag,
 }: {
   r: ProspectRow;
   d: LiveDetails | undefined;
   statuses: string[];
   segments: string[];
-  enriching: boolean;
   onStatus: (placeId: string, status: string) => void;
   onOpenNotes: () => void;
-  onFind: (placeId: string) => void;
+  onAnalyze: () => void;
   onTag: (placeId: string, segmentStr: string) => void;
 }) {
-  const emails = (r.emails ?? "").split(" | ").filter(Boolean);
   const tags = (r.segment ?? "").split(" | ").filter(Boolean);
   const addable = segments.filter((s) => !tags.includes(s));
   const cell = "border-b border-line p-2.5 align-top";
@@ -890,6 +851,11 @@ function Row({
               <a href={d.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
                 site
               </a>
+            )}
+            {d?.website && (
+              <button onClick={onAnalyze} className="text-ember-dk hover:underline" title="Read business signals from the company website">
+                analyze
+              </button>
             )}
           </div>
         </div>
@@ -930,7 +896,7 @@ function Row({
         <div className="text-xs text-mute">{r.city}</div>
       </td>
 
-      {/* Contact details: phone + WhatsApp/site + email in one column (live) */}
+      {/* Contact details: phone + WhatsApp (live from Google Places) */}
       <td className={cell}>
         <div className="whitespace-nowrap font-mono text-xs">
           {loading ? <span className="text-mute">…</span> : d.phone || <span className="text-mute">—</span>}
@@ -949,25 +915,6 @@ function Row({
             </a>
           </div>
         )}
-        <div className="mt-1.5 font-mono text-xs">
-          {emails.length > 0 ? (
-            emails.map((e) => (
-              <a key={e} href={`mailto:${e}`} className="block text-ember-dk hover:underline">
-                {e}
-              </a>
-            ))
-          ) : d?.website ? (
-            <button
-              onClick={() => onFind(r.placeId)}
-              disabled={enriching}
-              className="border border-line px-2 py-1 text-[11px] text-steel hover:border-ember hover:text-ember-dk disabled:opacity-50"
-            >
-              {enriching ? "Finding…" : "Find email"}
-            </button>
-          ) : (
-            <span className="text-mute">—</span>
-          )}
-        </div>
       </td>
 
       <td className={cell}>
@@ -1130,6 +1077,140 @@ function NotesModal({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * On-demand website analysis popup. Reads the company's own site live and shows
+ * non-personal business signals (certifications, business type, company
+ * socials). Nothing is stored; each open re-reads the site.
+ */
+function SiteAnalysisModal({
+  title,
+  website,
+  onClose,
+}: {
+  title: string;
+  website: string;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<"loading" | "error" | "done">("loading");
+  const [analysis, setAnalysis] = useState<WebsiteAnalysis | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/prospects/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ website }),
+        });
+        const d: AnalyzeResponse & { error?: string } = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.analysis) setState("error");
+        else {
+          setAnalysis(d.analysis);
+          setState("done");
+        }
+      } catch {
+        if (!cancelled) setState("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [website, onClose]);
+
+  const empty =
+    analysis &&
+    analysis.businessTypes.length === 0 &&
+    analysis.certifications.length === 0 &&
+    analysis.socials.length === 0;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Website analysis for ${title}`}
+    >
+      <div className="w-full max-w-[520px] border border-line bg-panel shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-ink px-4 py-3 text-white">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{title}</div>
+            <div className="truncate text-xs text-[#9aa3af]">Website signals · live, not stored</div>
+          </div>
+          <button onClick={onClose} className="text-[#9aa3af] hover:text-white" aria-label="Close analysis">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4">
+          {state === "loading" && <p className="text-center text-xs text-mute">Reading the company website…</p>}
+          {state === "error" && (
+            <p className="text-center text-xs text-mute">
+              Couldn&apos;t read this website (it may block automated visits). Try the “site” link directly.
+            </p>
+          )}
+          {state === "done" && analysis && (
+            <div className="space-y-3 text-sm">
+              <AnalysisGroup label="Business type" items={analysis.businessTypes} />
+              <AnalysisGroup label="Certifications / standards" items={analysis.certifications} />
+              <div>
+                <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-mute">Company social profiles</div>
+                {analysis.socials.length === 0 ? (
+                  <span className="text-xs text-mute">—</span>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.socials.map((s) => (
+                      <a
+                        key={s.label}
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="border border-line px-2 py-1 text-xs text-ember-dk hover:border-ember"
+                      >
+                        {s.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {empty && (
+                <p className="text-center text-xs text-mute">No signals detected on the site.</p>
+              )}
+              <p className="border-t border-line pt-2 text-[10px] text-mute">
+                Read live from the company&apos;s own website. Non-personal business signals only — nothing is stored.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisGroup({ label, items }: { label: string; items: string[] }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] uppercase tracking-[0.1em] text-mute">{label}</div>
+      {items.length === 0 ? (
+        <span className="text-xs text-mute">—</span>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {items.map((it) => (
+            <span key={it} className="border border-line bg-[#f6f8fa] px-2 py-0.5 text-xs text-steel">
+              {it}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

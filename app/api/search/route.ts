@@ -79,7 +79,6 @@ export async function POST(request: Request) {
       segment,
       country: countryName,
       city,
-      emails: "",
       source: "Google Places",
     });
   }

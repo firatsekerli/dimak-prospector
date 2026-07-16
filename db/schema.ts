@@ -18,8 +18,8 @@ import {
  * beyond the narrow lat/lng exception. So this table stores ONLY:
  *   - the place_id (the permanent, storable dedup key),
  *   - the search context the USER supplied (country + city they searched),
- *   - the user's own pipeline data (segment tags, status, notes),
- *   - emails we extracted from the company's own public website (not Google).
+ *   - the user's own pipeline data (segment tags, status; notes live in
+ *     prospect_notes).
  *
  * The business name, phone, website, address and category are never stored;
  * they are fetched live from Place Details when a row is shown (see
@@ -31,7 +31,6 @@ export const prospects = pgTable("prospects", {
   segment: text("segment"), // user-defined tags, " | "-joined
   country: text("country"), // the country the user searched (their input, not Google's)
   city: text("city"), // the city the user searched
-  emails: text("emails"), // extracted from the company website (our data), " | "-joined
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
   source: text("source"), // e.g. 'Google Places'
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

@@ -103,13 +103,18 @@ what the Maps Platform terms require:
 
 - **Stored (in Neon Postgres):** the Google `place_id` (which Google explicitly
   permits storing indefinitely), the **country and city you searched** (your own
-  search input), your **segment tags, status and notes**, and any **emails**
-  extracted from a company's own public website (not Google data).
+  search input), and your **segment tags, status and notes**.
 - **Never stored:** business name, phone, website, address, category. These are
   fetched **live** from Place Details (New) each time a row is displayed
   (`POST /api/prospects/details`) and held only in the browser for the session.
 - **No bulk export.** There is deliberately no CSV/Excel download of Google
   data. Salespeople work the pipeline inside the app.
+- **No email harvesting.** Instead of scraping contact emails (a mailing-list /
+  privacy concern), an on-demand **"analyze"** action reads a company's own
+  website live and shows non-personal business signals only — certifications,
+  business-type words, and company social profiles (`POST /api/prospects/analyze`).
+  Nothing from it is stored, and no personal data (names, personal emails) is
+  extracted.
 
 This means a search stores only IDs; opening the console re-fetches the details
 live. "Refresh live data" (below the filters) clears the in-memory cache and
@@ -136,22 +141,22 @@ bill:
 - The password gate above is the other half: it keeps the billed endpoints off
   the public internet. Keep the password private.
 
-Email enrichment fetches company **websites** (not Google), so it costs nothing
-against the Places quota.
+The "analyze" action fetches company **websites** (not Google), so it costs
+nothing against the Places quota.
 
 ## Project layout
 
 ```
 app/                    Next.js App Router
   api/                  route handlers: config, search, prospects(+update,
-                        +details, +cleanup-closed), enrich, market, geo,
-                        segments, health, auth/(login|logout)
+                        +details, +notes, +analyze, +cleanup-closed),
+                        market, geo, segments, health, auth/(login|logout)
   login/                the password gate page
   page.tsx              the console (search, table, filters, editing)
 middleware.ts           auth gate for all pages + /api/* (except login/auth)
 db/                     Drizzle schema + Neon client
 drizzle/                generated SQL migration
-lib/                    config, places, email, format, auth, types
+lib/                    config, places, website, format, auth, types
 reference/              the original Flask prototype (source of truth)
 CLAUDE.md               authoritative build spec + phased plan
 .env.example            environment variable template

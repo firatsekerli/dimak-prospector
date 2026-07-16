@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { and, eq, like, asc, desc, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { prospects, prospectNotes } from "@/db/schema";
-import { cleanEmailsField } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +31,6 @@ export async function GET(request: Request) {
       segment: prospects.segment,
       country: prospects.country,
       city: prospects.city,
-      emails: prospects.emails,
       status: prospects.status,
       source: prospects.source,
       createdAt: prospects.createdAt,
@@ -62,7 +60,6 @@ export async function GET(request: Request) {
 
   const out = rows.map((r) => ({
     ...r,
-    emails: cleanEmailsField(r.emails),
     notes: notesByPlace.get(r.placeId) ?? [],
   }));
 

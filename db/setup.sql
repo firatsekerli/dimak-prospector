@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS "prospects" (
   "segment"    text,
   "country"    text,
   "city"       text,
-  "emails"     text,
   "status"     text NOT NULL DEFAULT 'New',
   "source"     text,
   "created_at" timestamptz NOT NULL DEFAULT now(),

@@ -18,13 +18,21 @@ export type ProspectRow = {
   segment: string | null;
   country: string | null;
   city: string | null;
-  emails: string | null;
   status: string;
   notes: ProspectNote[]; // timestamped note log, newest first
   source: string | null;
   createdAt: string;
   updatedAt: string;
 };
+
+// Live, non-personal business signals from POST /api/prospects/analyze.
+// Read from the company's own website on demand; never stored.
+export type WebsiteAnalysis = {
+  businessTypes: string[];
+  certifications: string[];
+  socials: { label: string; url: string }[];
+};
+export type AnalyzeResponse = { analysis: WebsiteAnalysis };
 
 export type ProspectsResponse = {
   rows: ProspectRow[];
