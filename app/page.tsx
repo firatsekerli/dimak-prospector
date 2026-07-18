@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brand, SiteFooter, AdSlot } from "@/components/branding";
+import { scoreLead, type LeadScore } from "@/lib/score";
 import type {
   Config,
   ProspectRow,
@@ -68,6 +69,9 @@ export default function Console() {
   const [detailsBusy, setDetailsBusy] = useState(false);
 
   const [analyzeFor, setAnalyzeFor] = useState<string | null>(null); // placeId of the open analysis popup
+  const [fitKeywords, setFitKeywords] = useState<string[]>([]); // target categories for the Fit score
+  const [fitInput, setFitInput] = useState("");
+  const [sortByScore, setSortByScore] = useState(false);
   const [marketBusy, setMarketBusy] = useState(false);
   const [marketMsg, setMarketMsg] = useState("");
   const [market, setMarket] = useState<MarketResponse | null>(null);
@@ -148,8 +152,19 @@ export default function Console() {
       setGeo(g);
       const seg = await (await fetch("/api/segments")).json();
       setSegments(seg.segments ?? []);
+      // Restore the saved good-fit keywords (localStorage is client-only, so
+      // read it here — after an await — not during SSR/initial render).
+      const saved = localStorage.getItem("fitKeywords") ?? "";
+      setFitInput(saved);
+      setFitKeywords(saved.split(",").map((s) => s.trim()).filter(Boolean));
     })();
   }, []);
+
+  const saveFitKeywords = (v: string) => {
+    setFitInput(v);
+    localStorage.setItem("fitKeywords", v);
+    setFitKeywords(v.split(",").map((s) => s.trim()).filter(Boolean));
+  };
 
   const continentCountries = useMemo(
     () => geo?.continents.find((c) => c.code === continentCode)?.countries ?? [],
@@ -202,6 +217,21 @@ export default function Console() {
     for (const r of displayedRows) c[r.status] = (c[r.status] ?? 0) + 1;
     return c;
   }, [displayedRows, config]);
+
+  // Score each displayed row live (from loaded details + manual emails + the
+  // user's target keywords), optionally sorting best-first.
+  const scoredRows = useMemo(() => {
+    const list = displayedRows.map((r) => ({
+      r,
+      score: scoreLead({
+        detail: details[r.placeId],
+        emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
+        targetKeywords: fitKeywords,
+      }),
+    }));
+    if (sortByScore) list.sort((a, b) => (b.score.overall ?? -1) - (a.score.overall ?? -1));
+    return list;
+  }, [displayedRows, details, fitKeywords, sortByScore]);
 
   const addSegment = async () => {
     const name = newSegment.trim();
@@ -574,6 +604,20 @@ export default function Console() {
             </div>
           </div>
 
+          {/* Good-fit keywords — drive the Fit half of the lead score */}
+          <div className="mt-3 border-t border-line pt-3">
+            <label htmlFor="fitkw" className="mb-1.5 block text-[11px] tracking-[0.05em] text-steel">
+              Good-fit keywords <span className="text-mute">— categories worth selling to (for the Fit score)</span>
+            </label>
+            <input
+              id="fitkw"
+              value={fitInput}
+              onChange={(e) => saveFitKeywords(e.target.value)}
+              placeholder="e.g. distributor, contractor, building materials, hardware"
+              className="control w-full text-xs"
+            />
+          </div>
+
           {searchMsg && <div className="mt-2.5 text-xs text-mute">{searchMsg}</div>}
         </section>
 
@@ -695,6 +739,10 @@ export default function Console() {
           >
             {cleanupBusy ? "Checking…" : "Remove permanently-closed"}
           </button>
+          <label className="clickable ml-auto flex items-center gap-1.5 text-xs text-steel" title="Sort the list by lead score, best first">
+            <input type="checkbox" checked={sortByScore} onChange={(e) => setSortByScore(e.target.checked)} />
+            Sort by score
+          </label>
           {cleanupMsg && <span className="text-xs text-mute">{cleanupMsg}</span>}
         </div>
 
@@ -710,7 +758,7 @@ export default function Console() {
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Company", "Segment", "Location", "Contact details", "Status", "Notes"].map((h) => (
+                  {["Score", "Company", "Segment", "Location", "Contact details", "Status", "Notes"].map((h) => (
                     <th key={h} className="border-b border-line bg-[#f6f8fa] p-2.5 text-left text-[10px] uppercase tracking-[0.1em] text-mute">
                       {h}
                     </th>
@@ -718,11 +766,12 @@ export default function Console() {
                 </tr>
               </thead>
               <tbody>
-                {displayedRows.map((r) => (
+                {scoredRows.map(({ r, score }) => (
                   <Row
                     key={r.placeId}
                     r={r}
                     d={details[r.placeId]}
+                    score={score}
                     statuses={config?.statuses ?? []}
                     segments={segments}
                     onStatus={onStatus}
@@ -817,9 +866,30 @@ function FilterSelect({
   );
 }
 
+function ScoreBadge({ score }: { score: LeadScore }) {
+  if (score.overall == null) return <span className="text-xs text-mute">…</span>;
+  const v = score.overall;
+  const bg = v >= 67 ? "bg-status-replied" : v >= 34 ? "bg-status-contacted" : "bg-status-new";
+  const parts = [
+    `Overall ${v}`,
+    score.fit != null ? `Fit ${score.fit}` : "Fit — (set good-fit keywords)",
+    `Reach ${score.reach}`,
+  ];
+  if (score.reasons.length) parts.push(score.reasons.join(", "));
+  return (
+    <span
+      title={parts.join(" · ")}
+      className={`inline-block min-w-[30px] px-1.5 py-0.5 text-center text-xs font-semibold text-white ${bg}`}
+    >
+      {v}
+    </span>
+  );
+}
+
 function Row({
   r,
   d,
+  score,
   statuses,
   segments,
   onStatus,
@@ -830,6 +900,7 @@ function Row({
 }: {
   r: ProspectRow;
   d: LiveDetails | undefined;
+  score: LeadScore;
   statuses: string[];
   segments: string[];
   onStatus: (placeId: string, status: string) => void;
@@ -855,6 +926,9 @@ function Row({
 
   return (
     <tr>
+      <td className={cell}>
+        <ScoreBadge score={score} />
+      </td>
       <td className={cell}>
         {/* Cap the company column so long names wrap instead of squeezing the
             rest of the row (keeps the phone on one line). */}
