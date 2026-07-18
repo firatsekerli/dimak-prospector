@@ -205,6 +205,10 @@ export default function Console() {
         const p = JSON.parse(localStorage.getItem("outreachProfile") ?? "null");
         if (p && typeof p === "object") setOutreach({ product: p.product ?? "", sender: p.sender ?? "", tone: p.tone ?? "professional and warm" });
       } catch {}
+      try {
+        const dr = JSON.parse(localStorage.getItem("outreachDrafts") ?? "null");
+        if (dr && typeof dr === "object") setDrafts(dr);
+      } catch {}
     })();
   }, []);
 
@@ -891,7 +895,15 @@ export default function Console() {
           profile={outreach}
           onProfile={saveOutreachProfile}
           initialDraft={drafts[outreachFor] ?? ""}
-          onDraft={(t) => setDrafts((p) => ({ ...p, [outreachFor]: t }))}
+          onDraft={(t) =>
+            setDrafts((p) => {
+              const next = { ...p, [outreachFor]: t };
+              try {
+                localStorage.setItem("outreachDrafts", JSON.stringify(next));
+              } catch {}
+              return next;
+            })
+          }
           onClose={() => setOutreachFor(null)}
         />
       )}
