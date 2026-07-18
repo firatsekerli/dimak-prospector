@@ -56,6 +56,12 @@ is tied to a specific company.
 | `NEXT_PUBLIC_FOOTER_NOTE`  | Extra footer line (email/phone/etc.)                |
 | `NEXT_PUBLIC_SHOW_ADS`     | `"1"` shows the ad slot (ad-supported tier)         |
 
+**AI outreach (optional):** set `ANTHROPIC_API_KEY` (the customer's own key) to
+enable the per-lead **"outreach"** action, which drafts a personalized email or
+WhatsApp message from the lead's context and your saved pitch. Server-side only,
+BYO-key; nothing is stored — the salesperson edits and sends it. `OUTREACH_MODEL`
+overrides the model (default `claude-opus-4-8`; `claude-haiku-4-5` is cheaper).
+
 - **White-label a customer:** set their name/logo/accent/footer, leave ads off.
 - **Ad-supported tier:** keep your own branding, set `NEXT_PUBLIC_SHOW_ADS=1`, and
   drop your ad network's snippet into `AdSlot` in `components/branding.tsx`.

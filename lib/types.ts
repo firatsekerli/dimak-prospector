@@ -35,6 +35,11 @@ export type WebsiteAnalysis = {
 };
 export type AnalyzeResponse = { analysis: WebsiteAnalysis };
 
+// AI outreach — the operator's reusable pitch profile (stored in the browser)
+// and the draft response from POST /api/outreach.
+export type OutreachProfile = { product: string; sender: string; tone: string };
+export type OutreachResponse = { draft?: string; error?: string };
+
 export type ProspectsResponse = {
   rows: ProspectRow[];
   total: number;

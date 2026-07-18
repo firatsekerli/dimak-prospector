@@ -16,6 +16,8 @@ import type {
   DetailsResponse,
   WebsiteAnalysis,
   AnalyzeResponse,
+  OutreachProfile,
+  OutreachResponse,
 } from "@/lib/types";
 
 const isEmail = (s?: string | null) => !!s && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
@@ -69,6 +71,8 @@ export default function Console() {
   const [detailsBusy, setDetailsBusy] = useState(false);
 
   const [analyzeFor, setAnalyzeFor] = useState<string | null>(null); // placeId of the open analysis popup
+  const [outreachFor, setOutreachFor] = useState<string | null>(null); // placeId of the open outreach popup
+  const [outreach, setOutreach] = useState<OutreachProfile>({ product: "", sender: "", tone: "professional and warm" });
   const [fitKeywords, setFitKeywords] = useState<string[]>([]); // target categories for the Fit score
   const [fitInput, setFitInput] = useState("");
   const [sortByScore, setSortByScore] = useState(false);
@@ -157,6 +161,10 @@ export default function Console() {
       const saved = localStorage.getItem("fitKeywords") ?? "";
       setFitInput(saved);
       setFitKeywords(saved.split(",").map((s) => s.trim()).filter(Boolean));
+      try {
+        const p = JSON.parse(localStorage.getItem("outreachProfile") ?? "null");
+        if (p && typeof p === "object") setOutreach({ product: p.product ?? "", sender: p.sender ?? "", tone: p.tone ?? "professional and warm" });
+      } catch {}
     })();
   }, []);
 
@@ -164,6 +172,10 @@ export default function Console() {
     setFitInput(v);
     localStorage.setItem("fitKeywords", v);
     setFitKeywords(v.split(",").map((s) => s.trim()).filter(Boolean));
+  };
+  const saveOutreachProfile = (p: OutreachProfile) => {
+    setOutreach(p);
+    localStorage.setItem("outreachProfile", JSON.stringify(p));
   };
 
   const continentCountries = useMemo(
@@ -777,6 +789,7 @@ export default function Console() {
                     onStatus={onStatus}
                     onOpenNotes={() => setNotesFor(r.placeId)}
                     onAnalyze={() => setAnalyzeFor(r.placeId)}
+                    onOutreach={() => setOutreachFor(r.placeId)}
                     onContactEmail={onContactEmail}
                     onTag={onTag}
                   />
@@ -816,6 +829,23 @@ export default function Console() {
           title={details[analyzeFor]?.company || analyzeFor}
           website={details[analyzeFor]?.website || ""}
           onClose={() => setAnalyzeFor(null)}
+        />
+      )}
+
+      {outreachFor && (
+        <OutreachModal
+          lead={{
+            company: details[outreachFor]?.company,
+            category: details[outreachFor]?.category,
+            city: data?.rows.find((x) => x.placeId === outreachFor)?.city ?? undefined,
+            country: data?.rows.find((x) => x.placeId === outreachFor)?.country ?? undefined,
+            segment: data?.rows.find((x) => x.placeId === outreachFor)?.segment ?? undefined,
+          }}
+          email={(data?.rows.find((x) => x.placeId === outreachFor)?.contactEmail ?? "").split(" | ").filter(Boolean)[0] ?? ""}
+          wa={details[outreachFor]?.wa ?? ""}
+          profile={outreach}
+          onProfile={saveOutreachProfile}
+          onClose={() => setOutreachFor(null)}
         />
       )}
     </>
@@ -866,6 +896,175 @@ function FilterSelect({
   );
 }
 
+/**
+ * AI outreach popup. Drafts a personalized first-contact message for one lead
+ * using the customer's own Anthropic key (server-side). Nothing is stored; the
+ * salesperson edits the draft and sends it via email or WhatsApp themselves.
+ */
+function OutreachModal({
+  lead,
+  email,
+  wa,
+  profile,
+  onProfile,
+  onClose,
+}: {
+  lead: { company?: string; category?: string; city?: string; country?: string; segment?: string | null };
+  email: string;
+  wa: string;
+  profile: OutreachProfile;
+  onProfile: (p: OutreachProfile) => void;
+  onClose: () => void;
+}) {
+  const [channel, setChannel] = useState<"email" | "whatsapp">(email ? "email" : wa ? "whatsapp" : "email");
+  const [language, setLanguage] = useState("English");
+  const [draft, setDraft] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const generate = async () => {
+    if (!profile.product.trim() || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/outreach", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lead, profile, channel, language }),
+      });
+      const d: OutreachResponse = await res.json();
+      if (!res.ok || d.error) setError(d.error || "Could not draft the message.");
+      else setDraft(d.draft ?? "");
+    } catch {
+      setError("Could not reach the server. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const emailHref = () => {
+    let subject = "";
+    let bodyText = draft;
+    const m = draft.match(/^\s*subject:\s*(.+?)\n+([\s\S]*)$/i);
+    if (m) {
+      subject = m[1].trim();
+      bodyText = m[2].trim();
+    }
+    return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+  };
+  const waHref = () => `${wa}?text=${encodeURIComponent(draft)}`;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Draft outreach for ${lead.company ?? "lead"}`}
+    >
+      <div className="w-full max-w-[560px] border border-line bg-panel shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-ink px-4 py-3 text-white">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{lead.company || "Draft outreach"}</div>
+            <div className="truncate text-xs text-[#9aa3af]">AI draft · not stored · you review &amp; send</div>
+          </div>
+          <button onClick={onClose} className="text-[#9aa3af] hover:text-white" aria-label="Close outreach">
+            ✕
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          {/* Your pitch — persisted in the browser, reused across leads */}
+          <div>
+            <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">
+              What you sell / your pitch <span className="text-mute">(saved for next time)</span>
+            </label>
+            <textarea
+              value={profile.product}
+              onChange={(e) => onProfile({ ...profile, product: e.target.value })}
+              rows={2}
+              placeholder="e.g. We manufacture fire-rated steel doors and are seeking distribution partners in the Gulf."
+              className="control w-full text-sm"
+            />
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[140px] flex-1">
+              <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Your name / company</label>
+              <input
+                value={profile.sender}
+                onChange={(e) => onProfile({ ...profile, sender: e.target.value })}
+                placeholder="e.g. Firat, DİMAK"
+                className="control control-sm w-full"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Tone</label>
+              <select
+                value={profile.tone}
+                onChange={(e) => onProfile({ ...profile, tone: e.target.value })}
+                className="control control-sm"
+              >
+                <option>professional and warm</option>
+                <option>direct and brief</option>
+                <option>friendly and casual</option>
+                <option>formal</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Channel</label>
+              <select value={channel} onChange={(e) => setChannel(e.target.value as "email" | "whatsapp")} className="control control-sm">
+                <option value="email">Email</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Language</label>
+              <input value={language} onChange={(e) => setLanguage(e.target.value)} className="control control-sm w-[110px]" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button onClick={generate} disabled={busy || !profile.product.trim()} className="btn btn-primary btn-sm">
+              {busy ? "Drafting…" : draft ? "Regenerate" : "Draft message"}
+            </button>
+            {error && <span className="text-xs text-status-nofit">{error}</span>}
+          </div>
+
+          {draft && (
+            <>
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={8}
+                className="control w-full text-sm"
+                aria-label="Outreach draft"
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={() => navigator.clipboard?.writeText(draft)} className="btn btn-ghost btn-sm">
+                  Copy
+                </button>
+                {channel === "email" && email && (
+                  <a href={emailHref()} className="btn btn-ghost btn-sm">Open email</a>
+                )}
+                {channel === "whatsapp" && wa && (
+                  <a href={waHref()} target="_blank" rel="noopener noreferrer" className="btn btn-ghost btn-sm">Open WhatsApp</a>
+                )}
+                <span className="text-[10px] text-mute">Review before sending — it&apos;s a draft.</span>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScoreBadge({ score }: { score: LeadScore }) {
   if (score.overall == null) return <span className="text-xs text-mute">…</span>;
   const v = score.overall;
@@ -895,6 +1094,7 @@ function Row({
   onStatus,
   onOpenNotes,
   onAnalyze,
+  onOutreach,
   onContactEmail,
   onTag,
 }: {
@@ -906,6 +1106,7 @@ function Row({
   onStatus: (placeId: string, status: string) => void;
   onOpenNotes: () => void;
   onAnalyze: () => void;
+  onOutreach: () => void;
   onContactEmail: (placeId: string, contactEmail: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
 }) {
@@ -956,6 +1157,9 @@ function Row({
                 analyze
               </button>
             )}
+            <button onClick={onOutreach} className="text-ember-dk hover:underline" title="Draft a personalized outreach message with AI">
+              outreach
+            </button>
           </div>
         </div>
       </td>
