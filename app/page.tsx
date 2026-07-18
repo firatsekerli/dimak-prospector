@@ -14,6 +14,8 @@ import type {
   CityRow,
   LiveDetails,
   DetailsResponse,
+  ContactInfo,
+  ContactResponse,
   WebsiteAnalysis,
   AnalyzeResponse,
   OutreachProfile,
@@ -64,13 +66,19 @@ export default function Console() {
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
   const [data, setData] = useState<ProspectsResponse | null>(null);
 
-  // Live business content, keyed by place_id — fetched on view, never stored.
+  // Basic live content (name/category/status), keyed by place_id — fetched on
+  // view (cheap Pro tier), never stored.
   const [details, setDetails] = useState<Record<string, LiveDetails>>({});
   const detailsRef = useRef<Record<string, LiveDetails>>({});
   const inFlightRef = useRef<Set<string>>(new Set());
   const [detailsBusy, setDetailsBusy] = useState(false);
 
-  const [analyzeFor, setAnalyzeFor] = useState<string | null>(null); // placeId of the open analysis popup
+  // Contact fields (phone/website) — the paid tier, fetched only on demand.
+  const [contacts, setContacts] = useState<Record<string, ContactInfo>>({});
+  const contactsRef = useRef<Record<string, ContactInfo>>({});
+  const [contactBusy, setContactBusy] = useState<Record<string, boolean>>({});
+
+  const [analyzeFor, setAnalyzeFor] = useState<{ placeId: string; website: string } | null>(null);
   const [outreachFor, setOutreachFor] = useState<string | null>(null); // placeId of the open outreach popup
   const [outreach, setOutreach] = useState<OutreachProfile>({ product: "", sender: "", tone: "professional and warm" });
   const [fitKeywords, setFitKeywords] = useState<string[]>([]); // target categories for the Fit score
@@ -110,6 +118,37 @@ export default function Console() {
       setDetailsBusy(inFlightRef.current.size > 0);
     }
   }, []);
+
+  // Load the contact fields (phone/website — the paid tier) for one lead, on
+  // demand. Cached for the session so it never re-bills.
+  const ensureContact = useCallback(async (placeId: string): Promise<ContactInfo | null> => {
+    if (contactsRef.current[placeId]) return contactsRef.current[placeId];
+    setContactBusy((p) => ({ ...p, [placeId]: true }));
+    try {
+      const res = await fetch("/api/prospects/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ placeId }),
+      });
+      const d: ContactResponse = await res.json();
+      const c: ContactInfo = { phone: d.phone ?? "", website: d.website ?? "", wa: d.wa ?? "" };
+      contactsRef.current = { ...contactsRef.current, [placeId]: c };
+      setContacts(contactsRef.current);
+      return c;
+    } catch {
+      return null;
+    } finally {
+      setContactBusy((p) => ({ ...p, [placeId]: false }));
+    }
+  }, []);
+
+  const openAnalyze = useCallback(
+    async (placeId: string) => {
+      const c = await ensureContact(placeId);
+      setAnalyzeFor({ placeId, website: c?.website ?? "" });
+    },
+    [ensureContact]
+  );
 
   const reload = useCallback(
     async (f: Filters): Promise<ProspectsResponse> => {
@@ -209,13 +248,11 @@ export default function Console() {
   // Client-side view: apply the filters that depend on live content.
   const displayedRows = useMemo(() => {
     const rows = data?.rows ?? [];
-    const { category, website, q } = filters;
+    const { category, q } = filters;
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
       const d = details[r.placeId];
       if (category !== "All" && (!d || d.category !== category)) return false;
-      if (website === "Has site" && (!d || !d.website)) return false;
-      if (website === "No site" && (!d || !!d.website)) return false;
       if (needle) {
         const hay = `${d?.company ?? ""} ${r.city ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
@@ -237,13 +274,14 @@ export default function Console() {
       r,
       score: scoreLead({
         detail: details[r.placeId],
+        contact: contacts[r.placeId],
         emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
         targetKeywords: fitKeywords,
       }),
     }));
     if (sortByScore) list.sort((a, b) => (b.score.overall ?? -1) - (a.score.overall ?? -1));
     return list;
-  }, [displayedRows, details, fitKeywords, sortByScore]);
+  }, [displayedRows, details, contacts, fitKeywords, sortByScore]);
 
   const addSegment = async () => {
     const name = newSegment.trim();
@@ -310,7 +348,9 @@ export default function Console() {
   const refreshLive = () => {
     detailsRef.current = {};
     inFlightRef.current = new Set();
+    contactsRef.current = {};
     setDetails({});
+    setContacts({});
     void fetchDetails((data?.rows ?? []).map((r) => r.placeId));
   };
 
@@ -728,7 +768,6 @@ export default function Console() {
           <FilterSelect label="Segment" value={filters.segment} options={filterSegments} onChange={(v) => changeFilter("segment", v)} width="min-w-[140px]" />
           <FilterSelect label="Category" value={filters.category} options={filterCategories} onChange={(v) => changeFilter("category", v)} width="min-w-[150px]" />
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} width="w-[120px] min-w-[120px]" />
-          <FilterSelect label="Website" value={filters.website} options={["All", "Has site", "No site"]} onChange={(v) => changeFilter("website", v)} width="w-[120px] min-w-[120px]" />
           <div className="min-w-[150px] flex-1">
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
@@ -783,12 +822,15 @@ export default function Console() {
                     key={r.placeId}
                     r={r}
                     d={details[r.placeId]}
+                    contact={contacts[r.placeId]}
+                    contactBusy={!!contactBusy[r.placeId]}
                     score={score}
                     statuses={config?.statuses ?? []}
                     segments={segments}
                     onStatus={onStatus}
                     onOpenNotes={() => setNotesFor(r.placeId)}
-                    onAnalyze={() => setAnalyzeFor(r.placeId)}
+                    onShowContact={() => ensureContact(r.placeId)}
+                    onAnalyze={() => openAnalyze(r.placeId)}
                     onOutreach={() => setOutreachFor(r.placeId)}
                     onContactEmail={onContactEmail}
                     onTag={onTag}
@@ -801,9 +843,10 @@ export default function Console() {
 
         {displayedRows.length > 0 && (
           <p className="mt-2.5 text-[11px] text-mute">
-            Business names, phones, websites and addresses are fetched live from Google
-            when a row is shown — they are not stored. The WhatsApp link is generated
-            from the phone number and may not be registered on WhatsApp.
+            Names and categories are fetched live from Google when a row is shown; the
+            phone and website load only when you open a lead&apos;s contact (they cost
+            more, so they&apos;re on demand). Nothing is stored. The WhatsApp link is
+            generated from the phone number and may not be registered on WhatsApp.
           </p>
         )}
       </main>
@@ -826,8 +869,8 @@ export default function Console() {
 
       {analyzeFor && (
         <SiteAnalysisModal
-          title={details[analyzeFor]?.company || analyzeFor}
-          website={details[analyzeFor]?.website || ""}
+          title={details[analyzeFor.placeId]?.company || analyzeFor.placeId}
+          website={analyzeFor.website}
           onClose={() => setAnalyzeFor(null)}
         />
       )}
@@ -842,7 +885,7 @@ export default function Console() {
             segment: data?.rows.find((x) => x.placeId === outreachFor)?.segment ?? undefined,
           }}
           email={(data?.rows.find((x) => x.placeId === outreachFor)?.contactEmail ?? "").split(" | ").filter(Boolean)[0] ?? ""}
-          wa={details[outreachFor]?.wa ?? ""}
+          wa={contacts[outreachFor]?.wa ?? ""}
           profile={outreach}
           onProfile={saveOutreachProfile}
           onClose={() => setOutreachFor(null)}
@@ -1088,11 +1131,14 @@ function ScoreBadge({ score }: { score: LeadScore }) {
 function Row({
   r,
   d,
+  contact,
+  contactBusy,
   score,
   statuses,
   segments,
   onStatus,
   onOpenNotes,
+  onShowContact,
   onAnalyze,
   onOutreach,
   onContactEmail,
@@ -1100,11 +1146,14 @@ function Row({
 }: {
   r: ProspectRow;
   d: LiveDetails | undefined;
+  contact: ContactInfo | undefined;
+  contactBusy: boolean;
   score: LeadScore;
   statuses: string[];
   segments: string[];
   onStatus: (placeId: string, status: string) => void;
   onOpenNotes: () => void;
+  onShowContact: () => void;
   onAnalyze: () => void;
   onOutreach: () => void;
   onContactEmail: (placeId: string, contactEmail: string) => void;
@@ -1147,13 +1196,8 @@ function Row({
                 map
               </a>
             )}
-            {d?.website && (
-              <a href={d.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
-                site
-              </a>
-            )}
-            {d?.website && (
-              <button onClick={onAnalyze} className="text-ember-dk hover:underline" title="Read business signals from the company website">
+            {!loading && (
+              <button onClick={onAnalyze} className="text-ember-dk hover:underline" title="Read business signals from the company website (loads contact)">
                 analyze
               </button>
             )}
@@ -1199,24 +1243,41 @@ function Row({
         <div className="text-xs text-mute">{r.city}</div>
       </td>
 
-      {/* Contact details: phone + WhatsApp (live from Google Places) */}
+      {/* Contact details: phone + WhatsApp + site, loaded on demand (paid tier) */}
       <td className={cell}>
-        <div className="whitespace-nowrap font-mono text-xs">
-          {loading ? <span className="text-mute">…</span> : d.phone || <span className="text-mute">—</span>}
-        </div>
-        {d?.wa && (
-          <div className="mt-1 text-xs">
-            <a
-              href={d.wa}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="WhatsApp link generated from the phone number (via Google Places). The number may not be registered on WhatsApp."
-              aria-label="Open WhatsApp for this phone number (may not be registered on WhatsApp)"
-              className="text-ember-dk hover:underline"
-            >
-              WhatsApp
-            </a>
-          </div>
+        {contact ? (
+          <>
+            <div className="whitespace-nowrap font-mono text-xs">
+              {contact.phone || <span className="text-mute">no phone</span>}
+            </div>
+            <div className="mt-1 flex gap-2 text-xs">
+              {contact.wa && (
+                <a
+                  href={contact.wa}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="WhatsApp link generated from the phone number (via Google Places). The number may not be registered on WhatsApp."
+                  className="text-ember-dk hover:underline"
+                >
+                  WhatsApp
+                </a>
+              )}
+              {contact.website && (
+                <a href={contact.website} target="_blank" rel="noopener noreferrer" className="text-ember-dk hover:underline">
+                  site
+                </a>
+              )}
+            </div>
+          </>
+        ) : (
+          <button
+            onClick={onShowContact}
+            disabled={loading || contactBusy}
+            className="border border-line px-2 py-1 text-[11px] text-steel hover:border-ember hover:text-ember-dk disabled:opacity-50"
+            title="Fetch phone & website from Google (a billed lookup)"
+          >
+            {contactBusy ? "Loading…" : "Show contact"}
+          </button>
         )}
         {/* Manually-entered contact emails (the user typed them — their own data). */}
         <div className="mt-1.5 space-y-1">

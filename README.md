@@ -110,9 +110,12 @@ what the Maps Platform terms require:
 - **Stored (in Neon Postgres):** the Google `place_id` (which Google explicitly
   permits storing indefinitely), the **country and city you searched** (your own
   search input), and your **segment tags, status and notes**.
-- **Never stored:** business name, phone, website, address, category. These are
-  fetched **live** from Place Details (New) each time a row is displayed
-  (`POST /api/prospects/details`) and held only in the browser for the session.
+- **Never stored:** business name, phone, website, category. These are fetched
+  **live** from Place Details (New) and held only in the browser for the session.
+  To control cost, this is two-stage: the cheap fields (name, category, maps,
+  open/closed) load per row on view (`/api/prospects/details`, "Pro" tier); the
+  **phone and website** — the paid "contact" tier — load only on demand when you
+  open a lead's contact (`/api/prospects/contact`).
 - **No bulk export.** There is deliberately no CSV/Excel download of Google
   data. Salespeople work the pipeline inside the app.
 - **No email harvesting.** Instead of scraping contact emails (a mailing-list /
@@ -130,11 +133,11 @@ Google and deletes the ones now marked closed.
 ## Cost and safety notes
 
 The Google Places API is billed per request, and the contact fields (phone,
-website) sit in a higher pricing tier. Because details are fetched live per row
-on view, cost scales with how many prospects you look at — the app fetches only
-the rows on screen and caches them for the browser session to keep this in
-check. Configure these in Google Cloud so a mistake or abuse cannot run up a
-bill:
+website) sit in a higher ("Enterprise/contact") pricing tier. The app keeps this
+cheap by fetching only the free-tier fields (name/category/status) per row on
+view, and the billed contact fields **only when you open a lead's contact** — so
+the expensive lookups happen for the handful of leads you pursue, not every row.
+Configure these in Google Cloud so a mistake or abuse cannot run up a bill:
 
 - **Daily quota** — APIs & Services → **Places API (New)** → **Quotas & System
   Limits** → set low daily caps on both **`SearchText`** (search) and

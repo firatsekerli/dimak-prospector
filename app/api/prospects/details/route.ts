@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { placeDetails } from "@/lib/places";
-import { waLink } from "@/lib/format";
+import { placeBasic } from "@/lib/places";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -26,10 +25,10 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promis
 /**
  * POST /api/prospects/details  body { placeIds: string[] }
  *
- * Fetches the live business content (name, phone, website, address, category,
- * maps link, open/closed status) for the given place_ids straight from Google
- * Place Details (New) and streams it back to the browser. Nothing here is
- * stored — this is the on-view merge that keeps Google data out of our DB.
+ * Fetches the BASIC business content (name, category, maps link, open/closed) —
+ * the cheap "Pro" tier — for the given place_ids and streams it to the browser.
+ * Phone and website are the paid contact tier and are NOT fetched here; the
+ * client requests those on demand via /api/prospects/contact. Nothing is stored.
  *
  * Returns { details: { [placeId]: {...} } }. A place_id that errors or 404s is
  * simply omitted from the map (the row still renders from stored fields).
@@ -63,30 +62,17 @@ export async function POST(request: Request) {
 
   const details: Record<
     string,
-    {
-      company: string;
-      category: string;
-      address: string;
-      phone: string;
-      website: string;
-      googleMapsUrl: string;
-      businessStatus: string;
-      wa: string;
-    }
+    { company: string; category: string; googleMapsUrl: string; businessStatus: string }
   > = {};
 
   await mapLimit(ids, CONCURRENCY, async (pid) => {
-    const d = await placeDetails(pid, apiKey);
+    const d = await placeBasic(pid, apiKey);
     if (!d) return; // transient error / not found — leave it out
     details[pid] = {
       company: d.company,
       category: d.category,
-      address: d.address,
-      phone: d.phone,
-      website: d.website,
       googleMapsUrl: d.googleMapsUrl,
       businessStatus: d.businessStatus,
-      wa: waLink(d.phone),
     };
   });
 

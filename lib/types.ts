@@ -46,20 +46,21 @@ export type ProspectsResponse = {
   allCountries: string[]; // distinct countries present in the whole table
 };
 
-// Live business content for one place_id from POST /api/prospects/details.
-// Fetched from Google Place Details on view and never stored.
+// Basic live details for one place_id from POST /api/prospects/details — the
+// cheap "Pro" tier (no phone/website). Fetched on view, never stored.
 export type LiveDetails = {
   company: string;
   category: string;
-  address: string;
-  phone: string;
-  website: string;
   googleMapsUrl: string;
   businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
-  wa: string;
 };
 
 export type DetailsResponse = { details: Record<string, LiveDetails> };
+
+// Contact fields for one place_id from POST /api/prospects/contact — the paid
+// "Enterprise/contact" tier, fetched on demand only. Never stored.
+export type ContactInfo = { phone: string; website: string; wa: string };
+export type ContactResponse = ContactInfo & { error?: string };
 
 // v3 — geography cascade (GET /api/geo, GET /api/geo/cities)
 export type GeoCountry = { code: string; name: string; isoNumeric: number | null };
