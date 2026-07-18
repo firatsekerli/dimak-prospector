@@ -20,10 +20,11 @@ export type LeadScore = {
 export function scoreLead(opts: {
   detail?: LiveDetails;
   contact?: ContactInfo;
+  segment?: string | null; // the user's applied tags — also count toward Fit
   emails: string[];
   targetKeywords: string[];
 }): LeadScore {
-  const { detail, contact, emails, targetKeywords } = opts;
+  const { detail, contact, segment, emails, targetKeywords } = opts;
   if (!detail) return { reach: null, fit: null, overall: null, closed: false, reasons: [] };
 
   const closed = detail.businessStatus === "CLOSED_PERMANENTLY";
@@ -44,7 +45,8 @@ export function scoreLead(opts: {
   // contact is fetched — a real, reachable business).
   let fit: number | null = null;
   if (targetKeywords.length && !closed) {
-    const hay = (detail.category ?? "").toLowerCase();
+    // Match keywords against Google's category AND the tags the user applied.
+    const hay = `${detail.category ?? ""} ${segment ?? ""}`.toLowerCase();
     const matched = targetKeywords.some((k) => k && hay.includes(k.toLowerCase()));
     fit = (matched ? 70 : 0) + (contact?.website ? 30 : 0);
     if (matched) reasons.push("category match");

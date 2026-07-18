@@ -275,6 +275,7 @@ export default function Console() {
       score: scoreLead({
         detail: details[r.placeId],
         contact: contacts[r.placeId],
+        segment: r.segment,
         emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
         targetKeywords: fitKeywords,
       }),
