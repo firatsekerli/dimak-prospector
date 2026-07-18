@@ -81,6 +81,7 @@ export default function Console() {
   const [analyzeFor, setAnalyzeFor] = useState<{ placeId: string; website: string } | null>(null);
   const [outreachFor, setOutreachFor] = useState<string | null>(null); // placeId of the open outreach popup
   const [outreach, setOutreach] = useState<OutreachProfile>({ product: "", sender: "", tone: "professional and warm" });
+  const [drafts, setDrafts] = useState<Record<string, string>>({}); // per-lead outreach drafts (session)
   const [fitKeywords, setFitKeywords] = useState<string[]>([]); // target categories for the Fit score
   const [fitInput, setFitInput] = useState("");
   const [sortByScore, setSortByScore] = useState(false);
@@ -889,6 +890,8 @@ export default function Console() {
           wa={contacts[outreachFor]?.wa ?? ""}
           profile={outreach}
           onProfile={saveOutreachProfile}
+          initialDraft={drafts[outreachFor] ?? ""}
+          onDraft={(t) => setDrafts((p) => ({ ...p, [outreachFor]: t }))}
           onClose={() => setOutreachFor(null)}
         />
       )}
@@ -945,12 +948,29 @@ function FilterSelect({
  * using the customer's own Anthropic key (server-side). Nothing is stored; the
  * salesperson edits the draft and sends it via email or WhatsApp themselves.
  */
+const OUTREACH_LANGUAGES = [
+  "English",
+  "Turkish",
+  "Romanian",
+  "Arabic",
+  "German",
+  "French",
+  "Spanish",
+  "Italian",
+  "Russian",
+  "Polish",
+  "Portuguese",
+  "Dutch",
+];
+
 function OutreachModal({
   lead,
   email,
   wa,
   profile,
   onProfile,
+  initialDraft,
+  onDraft,
   onClose,
 }: {
   lead: { company?: string; category?: string; city?: string; country?: string; segment?: string | null };
@@ -958,13 +978,21 @@ function OutreachModal({
   wa: string;
   profile: OutreachProfile;
   onProfile: (p: OutreachProfile) => void;
+  initialDraft: string;
+  onDraft: (draft: string) => void;
   onClose: () => void;
 }) {
   const [channel, setChannel] = useState<"email" | "whatsapp">(email ? "email" : wa ? "whatsapp" : "email");
   const [language, setLanguage] = useState("English");
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  // Keep the draft in the parent so it survives closing/reopening the popup.
+  const updateDraft = (t: string) => {
+    setDraft(t);
+    onDraft(t);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -984,7 +1012,7 @@ function OutreachModal({
       });
       const d: OutreachResponse = await res.json();
       if (!res.ok || d.error) setError(d.error || "Could not draft the message.");
-      else setDraft(d.draft ?? "");
+      else updateDraft(d.draft ?? "");
     } catch {
       setError("Could not reach the server. Please try again.");
     } finally {
@@ -1069,7 +1097,11 @@ function OutreachModal({
             </div>
             <div>
               <label className="mb-1 block text-[11px] tracking-[0.05em] text-steel">Language</label>
-              <input value={language} onChange={(e) => setLanguage(e.target.value)} className="control control-sm w-[110px]" />
+              <select value={language} onChange={(e) => setLanguage(e.target.value)} className="control control-sm">
+                {OUTREACH_LANGUAGES.map((l) => (
+                  <option key={l}>{l}</option>
+                ))}
+              </select>
             </div>
           </div>
 
@@ -1084,7 +1116,7 @@ function OutreachModal({
             <>
               <textarea
                 value={draft}
-                onChange={(e) => setDraft(e.target.value)}
+                onChange={(e) => updateDraft(e.target.value)}
                 rows={8}
                 className="control w-full text-sm"
                 aria-label="Outreach draft"
@@ -1116,7 +1148,7 @@ function ScoreBadge({ score }: { score: LeadScore }) {
   const parts = [
     `Overall ${v}`,
     score.fit != null ? `Fit ${score.fit}` : "Fit — (set good-fit keywords)",
-    `Reach ${score.reach}`,
+    score.reach != null ? `Reach ${score.reach}` : "Reach — (load contact / add email)",
   ];
   if (score.reasons.length) parts.push(score.reasons.join(", "));
   return (

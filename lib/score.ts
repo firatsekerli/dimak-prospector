@@ -30,28 +30,41 @@ export function scoreLead(opts: {
   const closed = detail.businessStatus === "CLOSED_PERMANENTLY";
   const reasons: string[] = [];
 
-  // Reach: phone 40 + website 30 + email 30 (0 if permanently closed). Phone and
-  // website only count once contact has been loaded for the lead.
-  let reach = 0;
+  // Reach: phone 40 + website 30 + email 30. Phone/website are only known once
+  // contact is loaded, so before that (and with no email) reachability is
+  // UNKNOWN (null), not zero — otherwise a good lead looks bad before you pay
+  // to load its contact.
+  let reach: number | null;
   if (closed) {
+    reach = 0;
     reasons.push("permanently closed");
+  } else if (!contact && emails.length === 0) {
+    reach = null; // unknown until you load contact or add an email
   } else {
+    reach = 0;
     if (contact?.phone) { reach += 40; reasons.push("phone"); }
     if (contact?.website) { reach += 30; reasons.push("website"); }
     if (emails.length) { reach += 30; reasons.push("email"); }
   }
 
-  // Fit: category matches a target keyword (70) + a loaded website (30, once
-  // contact is fetched — a real, reachable business).
+  // Fit: keywords match Google's category OR the user's tags (70) + a loaded
+  // website (30, once contact is fetched — a real, reachable business).
   let fit: number | null = null;
   if (targetKeywords.length && !closed) {
-    // Match keywords against Google's category AND the tags the user applied.
     const hay = `${detail.category ?? ""} ${segment ?? ""}`.toLowerCase();
     const matched = targetKeywords.some((k) => k && hay.includes(k.toLowerCase()));
     fit = (matched ? 70 : 0) + (contact?.website ? 30 : 0);
     if (matched) reasons.push("category match");
   }
 
-  const overall = closed ? 0 : fit == null ? reach : Math.round((fit + reach) / 2);
-  return { reach: closed ? 0 : reach, fit, overall, closed, reasons };
+  // Overall favors Fit (are they the right company?) over Reach (can I contact
+  // them?). When reachability is still unknown, score on Fit alone.
+  let overall: number | null;
+  if (closed) overall = 0;
+  else if (fit == null && reach == null) overall = null;
+  else if (fit == null) overall = reach;
+  else if (reach == null) overall = fit;
+  else overall = Math.round(0.6 * fit + 0.4 * reach);
+
+  return { reach, fit, overall, closed, reasons };
 }
