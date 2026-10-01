@@ -1187,7 +1187,7 @@ function ScoreBadge({ score }: { score: LeadScore }) {
   const bg = v >= 67 ? "bg-status-replied" : v >= 34 ? "bg-status-contacted" : "bg-status-new";
   const parts = [
     `Overall ${v}`,
-    score.fit != null ? `Fit ${score.fit}` : "Fit — (set good-fit keywords)",
+    score.fit != null ? `Fit ${score.fit}` : "Fit —",
     score.reach != null ? `Reach ${score.reach}` : "Reach — (load contact / add email)",
   ];
   if (score.reasons.length) parts.push(score.reasons.join(", "));

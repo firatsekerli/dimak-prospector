@@ -6,12 +6,26 @@ import type { LiveDetails, ContactInfo } from "./types";
 //           Phone & website come from the paid contact tier, so they only count
 //           once you've loaded a lead's contact ("Show contact"); until then
 //           Reach reflects email + open status.
-//   Fit   — whether they're the right kind of company (category vs your target
-//           keywords). Fit needs the user's target keywords to be meaningful.
+//   Fit   — whether they're the right kind of company, judged from what GOOGLE
+//           says the business is (its category + name), never the user's own tag.
+
+// Business-type words that signal a plausible fire-door buyer or reseller. A
+// normal user thinks in PRODUCTS ("fire door"), but Google labels BUSINESS TYPES
+// ("Manufacturer", "Hardware store"). So we bake in the domain knowledge here —
+// the user never has to learn Google's category labels. Matched as substrings
+// against the category + name. Editable in one place to tune per industry.
+export const RELEVANT_CATEGORY_HINTS = [
+  "door", "manufacturer", "hardware", "building material", "building supply",
+  "construction", "contractor", "supplier", "wholesal", "distribut", "metal",
+  "steel", "iron", "alumin", "glass", "window", "joinery", "carpentry", "timber",
+  "lumber", "interior", "fit out", "fitout", "architect", "industrial", "trading",
+  "home improvement", "home goods", "furniture", "fire",
+];
+const STOPWORDS = new Set(["and", "the", "for", "with", "shpk"]);
 
 export type LeadScore = {
   reach: number | null; // 0–100, null until basic details load
-  fit: number | null; // 0–100, null if no target keywords set (can't judge fit)
+  fit: number | null; // 0–100, null until basic details load
   overall: number | null;
   closed: boolean;
   reasons: string[]; // short human-readable factors, for the tooltip
@@ -46,16 +60,25 @@ export function scoreLead(opts: {
     if (emails.length) { reach += 30; reasons.push("email"); }
   }
 
-  // Fit: keywords match what GOOGLE says the business is — its category and its
-  // name (e.g. "FAL Doors", "Warmfire") — NOT the user's own tag. Matching the
-  // tag made every tagged lead score the same, so it's deliberately excluded.
-  // Match (70) + a loaded website (30, once contact is fetched — a real business).
+  // Fit: judged from Google's category + name (never the user's tag). Two signals:
+  //   - typeHit: the category/name looks like a relevant business type (built-in
+  //     list above) — so a hardware store or manufacturer scores well even if the
+  //     user's keywords don't mention those words.
+  //   - userHit: the user's product keywords (tokenized, so "fire door" → fire,
+  //     door) appear in the category/name — extra specificity.
+  // 10 base + 45 per signal → 10 (off-target) / 55 (one) / 100 (both). Website is
+  // deliberately NOT counted here (it belongs to Reach), so Fit stays stable when
+  // you load a lead's contact.
   let fit: number | null = null;
-  if (targetKeywords.length && !closed) {
+  if (!closed) {
     const hay = `${detail.category ?? ""} ${detail.company ?? ""}`.toLowerCase();
-    const matched = targetKeywords.some((k) => k && hay.includes(k.toLowerCase()));
-    fit = (matched ? 70 : 0) + (contact?.website ? 30 : 0);
-    if (matched) reasons.push("category/name match");
+    const typeHit = RELEVANT_CATEGORY_HINTS.some((h) => hay.includes(h));
+    const userTokens = targetKeywords
+      .flatMap((k) => k.toLowerCase().split(/[^a-z0-9]+/))
+      .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
+    const userHit = userTokens.some((t) => hay.includes(t));
+    fit = 10 + (typeHit ? 45 : 0) + (userHit ? 45 : 0);
+    reasons.push(typeHit || userHit ? "relevant type" : "off-target");
   }
 
   // Overall favors Fit (are they the right company?) over Reach (can I contact
