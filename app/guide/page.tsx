@@ -143,6 +143,12 @@ export default function GuidePage() {
               (phone / website / email). Reach is advisory only; it does <Term>not</Term> move the
               headline number, so loading a contact or analyzing never changes the score.
             </p>
+            <p>
+              The <Term>★ star</Term> under each score lets you <Term>mark a lead as a strong fit</Term>
+              {" "}yourself — for companies you&apos;ve checked and know are good, but whose Google
+              category is generic or whose website can&apos;t be read automatically. A starred lead&apos;s
+              score is forced to the top and, unlike analyze, your mark is <Term>saved permanently</Term>.
+            </p>
           </Section>
 
           <Section id="keywords" title="6. Good-fit keywords">

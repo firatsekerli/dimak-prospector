@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * Notes are managed separately via /api/prospects/notes (a timestamped log).
  */
 export async function POST(request: Request) {
-  let body: { place_id?: string; status?: string; segment?: string; contactEmail?: string };
+  let body: { place_id?: string; status?: string; segment?: string; contactEmail?: string; goodFit?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -30,6 +30,7 @@ export async function POST(request: Request) {
     status?: string;
     segment?: string;
     contactEmail?: string | null;
+    goodFit?: boolean;
     updatedAt?: ReturnType<typeof sql>;
   } = {};
 
@@ -45,8 +46,16 @@ export async function POST(request: Request) {
   if (typeof body.contactEmail === "string") {
     set.contactEmail = body.contactEmail.trim() || null;
   }
+  if (typeof body.goodFit === "boolean") {
+    set.goodFit = body.goodFit;
+  }
 
-  if (set.status === undefined && set.segment === undefined && set.contactEmail === undefined) {
+  if (
+    set.status === undefined &&
+    set.segment === undefined &&
+    set.contactEmail === undefined &&
+    set.goodFit === undefined
+  ) {
     return NextResponse.json({ ok: true }); // nothing to change
   }
 

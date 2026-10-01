@@ -34,6 +34,7 @@ export const prospects = pgTable("prospects", {
   searchTerms: text("search_terms"), // the keyword(s) the user searched to find it, " | "-joined
   contactEmail: text("contact_email"), // manually entered by the user, " | "-joined (their own CRM data)
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
+  goodFit: boolean("good_fit").notNull().default(false), // user's manual "this is a strong fit" mark
   source: text("source"), // e.g. 'Google Places'
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -35,10 +35,11 @@ export function scoreLead(opts: {
   detail?: LiveDetails;
   contact?: ContactInfo;
   analysis?: WebsiteAnalysis; // from "analyze" — lets the website confirm a fit
+  goodFit?: boolean; // user's manual "strong fit" mark — forces the score to max
   emails: string[];
   targetKeywords: string[];
 }): LeadScore {
-  const { detail, contact, analysis, emails, targetKeywords } = opts;
+  const { detail, contact, analysis, goodFit, emails, targetKeywords } = opts;
   if (!detail) return { reach: null, fit: null, overall: null, closed: false, reasons: [] };
 
   const closed = detail.businessStatus === "CLOSED_PERMANENTLY";
@@ -96,6 +97,14 @@ export function scoreLead(opts: {
     }
 
     if (fit <= 10) reasons.push("off-target");
+
+    // A manual "good fit" mark is the user's own judgment and wins over any
+    // auto-signal — for leads the tool can't assess (generic category, site that
+    // blocks reading) but the user has checked themselves.
+    if (goodFit) {
+      fit = 100;
+      reasons.push("marked good fit ★");
+    }
   }
 
   // Headline score = Fit only (are they the right kind of company?). Reach is

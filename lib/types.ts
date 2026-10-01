@@ -21,6 +21,7 @@ export type ProspectRow = {
   searchTerms: string | null; // keyword(s) used to find this lead
   contactEmail: string | null; // manually entered by the user
   status: string;
+  goodFit: boolean; // user's manual "strong fit" mark — forces the score to max
   notes: ProspectNote[]; // timestamped note log, newest first
   source: string | null;
   createdAt: string;

@@ -319,6 +319,7 @@ export default function Console() {
         detail: details[r.placeId],
         contact: contacts[r.placeId],
         analysis: analyses[r.placeId],
+        goodFit: r.goodFit,
         emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
         targetKeywords: fitKeywords,
       }),
@@ -350,6 +351,10 @@ export default function Console() {
   };
   const onTag = async (placeId: string, segmentStr: string) => {
     await save(placeId, { segment: segmentStr });
+    reload(filters);
+  };
+  const toggleGoodFit = async (placeId: string, value: boolean) => {
+    await save(placeId, { goodFit: value });
     reload(filters);
   };
 
@@ -440,7 +445,7 @@ export default function Console() {
   };
   const changeFind = (value: string) => setFilters((f) => ({ ...f, q: value }));
 
-  async function save(placeId: string, fields: { status?: string; segment?: string; contactEmail?: string }) {
+  async function save(placeId: string, fields: { status?: string; segment?: string; contactEmail?: string; goodFit?: boolean }) {
     await fetch("/api/prospects/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -901,6 +906,7 @@ export default function Console() {
                     onOutreach={() => setOutreachFor(r.placeId)}
                     onContactEmail={onContactEmail}
                     onTag={onTag}
+                    onToggleGoodFit={toggleGoodFit}
                   />
                 ))}
               </tbody>
@@ -1250,6 +1256,7 @@ function Row({
   onOutreach,
   onContactEmail,
   onTag,
+  onToggleGoodFit,
 }: {
   r: ProspectRow;
   d: LiveDetails | undefined;
@@ -1265,6 +1272,7 @@ function Row({
   onOutreach: () => void;
   onContactEmail: (placeId: string, contactEmail: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
+  onToggleGoodFit: (placeId: string, value: boolean) => void;
 }) {
   const tags = (r.segment ?? "").split(" | ").filter(Boolean);
   const addable = segments.filter((s) => !tags.includes(s));
@@ -1284,7 +1292,17 @@ function Row({
   return (
     <tr>
       <td className={cell}>
-        <ScoreBadge score={score} />
+        <div className="flex flex-col items-start gap-1">
+          <ScoreBadge score={score} />
+          <button
+            onClick={() => onToggleGoodFit(r.placeId, !r.goodFit)}
+            className={`text-sm leading-none ${r.goodFit ? "text-ember" : "text-mute hover:text-ember"}`}
+            title={r.goodFit ? "Marked as a strong fit — click to unmark" : "Mark as a strong fit (forces the score to max)"}
+            aria-pressed={r.goodFit}
+          >
+            {r.goodFit ? "★" : "☆"}
+          </button>
+        </div>
       </td>
       <td className={cell}>
         {/* Cap the company column so long names wrap instead of squeezing the

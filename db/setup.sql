@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS "prospects" (
   "search_terms"  text,
   "contact_email" text,
   "status"        text NOT NULL DEFAULT 'New',
+  "good_fit"      boolean NOT NULL DEFAULT false,
   "source"     text,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now()

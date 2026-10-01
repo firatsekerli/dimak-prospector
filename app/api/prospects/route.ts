@@ -34,6 +34,7 @@ export async function GET(request: Request) {
       searchTerms: prospects.searchTerms,
       contactEmail: prospects.contactEmail,
       status: prospects.status,
+      goodFit: prospects.goodFit,
       source: prospects.source,
       createdAt: prospects.createdAt,
       updatedAt: prospects.updatedAt,
