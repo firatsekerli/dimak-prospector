@@ -182,6 +182,7 @@ export default function GuidePage() {
             <ul className="list-disc space-y-1.5 pl-5">
               <li><Term>Show contact</Term>: loads phone + website (a paid Google lookup — on demand). Gives you WhatsApp and website links.</li>
               <li><Term>Analyze</Term>: reads the company&apos;s own website and pulls non-personal signals — business type, certifications (e.g. EN 1634), social profiles. Also loads the contact (needed to find the website).</li>
+              <li><Term>Assess</Term>: researches the company with AI (web search) and judges whether it&apos;s a good fit — with a verdict, confidence, and a one-click &quot;mark as good fit ★&quot;. Works even when the company&apos;s own website blocks automated reading. Uses your Anthropic key (defaults to the cheapest model), on demand.</li>
               <li><Term>Outreach</Term>: drafts a personalized first message with AI, in the language you pick. Requires your Anthropic API key to be set. Drafts are kept on this device.</li>
               <li><Term>Status</Term> &amp; <Term>Notes</Term>: track your pipeline. Notes are timestamped and kept per lead.</li>
               <li><Term>+ add email</Term>: record contact emails you find yourself — this is your own data and is saved permanently.</li>

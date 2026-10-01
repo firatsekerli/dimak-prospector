@@ -19,6 +19,8 @@ import type {
   ContactResponse,
   WebsiteAnalysis,
   AnalyzeResponse,
+  AssessResponse,
+  AssessVerdict,
   OutreachProfile,
   OutreachResponse,
 } from "@/lib/types";
@@ -81,6 +83,7 @@ export default function Console() {
   const [contactBusy, setContactBusy] = useState<Record<string, boolean>>({});
 
   const [analyzeFor, setAnalyzeFor] = useState<{ placeId: string; website: string } | null>(null);
+  const [assessFor, setAssessFor] = useState<string | null>(null); // placeId of the open AI-assess popup
   const [outreachFor, setOutreachFor] = useState<string | null>(null); // placeId of the open outreach popup
   const [outreach, setOutreach] = useState<OutreachProfile>({ product: "", sender: "", tone: "professional and warm" });
   const [drafts, setDrafts] = useState<Record<string, string>>({}); // per-lead outreach drafts (session)
@@ -903,6 +906,7 @@ export default function Console() {
                     onOpenNotes={() => setNotesFor(r.placeId)}
                     onShowContact={() => ensureContact(r.placeId)}
                     onAnalyze={() => openAnalyze(r.placeId)}
+                    onAssess={() => setAssessFor(r.placeId)}
                     onOutreach={() => setOutreachFor(r.placeId)}
                     onContactEmail={onContactEmail}
                     onTag={onTag}
@@ -947,6 +951,26 @@ export default function Console() {
           keywords={fitKeywords}
           onResult={(a) => setAnalyses((prev) => ({ ...prev, [analyzeFor.placeId]: a }))}
           onClose={() => setAnalyzeFor(null)}
+        />
+      )}
+
+      {assessFor && (
+        <AssessModal
+          title={details[assessFor]?.company || assessFor}
+          payload={{
+            company: details[assessFor]?.company ?? assessFor,
+            category: details[assessFor]?.category,
+            city: details[assessFor]?.city || (data?.rows.find((x) => x.placeId === assessFor)?.city ?? undefined),
+            country: data?.rows.find((x) => x.placeId === assessFor)?.country ?? undefined,
+            website: contacts[assessFor]?.website || undefined,
+            product: outreach.product || undefined,
+            keywords: fitKeywords,
+          }}
+          alreadyGoodFit={!!data?.rows.find((x) => x.placeId === assessFor)?.goodFit}
+          onMarkGoodFit={() => {
+            toggleGoodFit(assessFor, true);
+          }}
+          onClose={() => setAssessFor(null)}
         />
       )}
 
@@ -1253,6 +1277,7 @@ function Row({
   onOpenNotes,
   onShowContact,
   onAnalyze,
+  onAssess,
   onOutreach,
   onContactEmail,
   onTag,
@@ -1269,6 +1294,7 @@ function Row({
   onOpenNotes: () => void;
   onShowContact: () => void;
   onAnalyze: () => void;
+  onAssess: () => void;
   onOutreach: () => void;
   onContactEmail: (placeId: string, contactEmail: string) => void;
   onTag: (placeId: string, segmentStr: string) => void;
@@ -1329,6 +1355,11 @@ function Row({
             {!loading && (
               <button onClick={onAnalyze} className="text-ember-dk hover:underline" title="Read business signals from the company website (loads contact)">
                 analyze
+              </button>
+            )}
+            {!loading && (
+              <button onClick={onAssess} className="text-ember-dk hover:underline" title="Research this company with AI (web search) and judge if it's a good fit — works even when their site blocks reading">
+                assess
               </button>
             )}
             <button onClick={onOutreach} className="text-ember-dk hover:underline" title="Draft a personalized outreach message with AI">
@@ -1752,6 +1783,131 @@ function AnalysisGroup({ label, items }: { label: string; items: string[] }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function AssessModal({
+  title,
+  payload,
+  alreadyGoodFit,
+  onMarkGoodFit,
+  onClose,
+}: {
+  title: string;
+  payload: {
+    company: string;
+    category?: string;
+    city?: string;
+    country?: string;
+    website?: string;
+    product?: string;
+    keywords: string[];
+  };
+  alreadyGoodFit: boolean;
+  onMarkGoodFit: () => void;
+  onClose: () => void;
+}) {
+  const [state, setState] = useState<"loading" | "error" | "done">("loading");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [result, setResult] = useState<{ verdict: AssessVerdict; score: number; summary: string } | null>(null);
+  const [marked, setMarked] = useState(alreadyGoodFit);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/prospects/assess", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const d: AssessResponse = await res.json();
+        if (cancelled) return;
+        if (!res.ok || !d.verdict) {
+          setErrorMsg(d.error || "Could not assess this lead.");
+          setState("error");
+        } else {
+          setResult({ verdict: d.verdict, score: d.score ?? 50, summary: d.summary ?? "" });
+          setState("done");
+        }
+      } catch {
+        if (!cancelled) {
+          setErrorMsg("Could not reach the server.");
+          setState("error");
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      window.removeEventListener("keydown", onKey);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const verdictStyle: Record<AssessVerdict, { label: string; cls: string }> = {
+    fit: { label: "Good fit", cls: "text-status-replied" },
+    maybe: { label: "Maybe", cls: "text-status-contacted" },
+    no: { label: "Not a fit", cls: "text-status-nofit" },
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:items-center"
+      onMouseDown={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`AI assessment for ${title}`}
+    >
+      <div className="w-full max-w-[520px] border border-line bg-panel shadow-xl" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-line bg-ink px-4 py-3 text-white">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{title}</div>
+            <div className="truncate text-xs text-[#9aa3af]">AI assessment · web research, not stored</div>
+          </div>
+          <button onClick={onClose} className="text-[#9aa3af] hover:text-white" aria-label="Close assessment">
+            ✕
+          </button>
+        </div>
+
+        <div className="p-4">
+          {state === "loading" && (
+            <p className="text-center text-xs text-mute">Researching this company with AI (web search)…</p>
+          )}
+          {state === "error" && <p className="text-center text-xs text-mute">{errorMsg}</p>}
+          {state === "done" && result && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-baseline gap-2">
+                <span className={`text-base font-bold ${verdictStyle[result.verdict].cls}`}>
+                  {verdictStyle[result.verdict].label}
+                </span>
+                <span className="font-mono text-xs text-mute">confidence {result.score}/100</span>
+              </div>
+              <p className="text-steel">{result.summary}</p>
+              <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
+                {marked ? (
+                  <span className="text-xs text-status-replied">★ Marked as a strong fit</span>
+                ) : (
+                  <button
+                    onClick={() => {
+                      onMarkGoodFit();
+                      setMarked(true);
+                    }}
+                    className="btn btn-primary btn-sm"
+                  >
+                    ★ Mark as good fit
+                  </button>
+                )}
+                <span className="text-[10px] text-mute">
+                  Researched live with AI web search. Review before acting — nothing is stored.
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

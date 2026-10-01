@@ -39,6 +39,11 @@ export type WebsiteAnalysis = {
 };
 export type AnalyzeResponse = { analysis: WebsiteAnalysis };
 
+// AI assessment (POST /api/prospects/assess) — Claude researches the company with
+// web search and judges whether it's a good prospect. Nothing is stored.
+export type AssessVerdict = "fit" | "maybe" | "no";
+export type AssessResponse = { verdict?: AssessVerdict; score?: number; summary?: string; error?: string };
+
 // AI outreach — the operator's reusable pitch profile (stored in the browser)
 // and the draft response from POST /api/outreach.
 export type OutreachProfile = { product: string; sender: string; tone: string };
