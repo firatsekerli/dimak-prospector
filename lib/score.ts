@@ -20,11 +20,10 @@ export type LeadScore = {
 export function scoreLead(opts: {
   detail?: LiveDetails;
   contact?: ContactInfo;
-  segment?: string | null; // the user's applied tags — also count toward Fit
   emails: string[];
   targetKeywords: string[];
 }): LeadScore {
-  const { detail, contact, segment, emails, targetKeywords } = opts;
+  const { detail, contact, emails, targetKeywords } = opts;
   if (!detail) return { reach: null, fit: null, overall: null, closed: false, reasons: [] };
 
   const closed = detail.businessStatus === "CLOSED_PERMANENTLY";
@@ -47,14 +46,16 @@ export function scoreLead(opts: {
     if (emails.length) { reach += 30; reasons.push("email"); }
   }
 
-  // Fit: keywords match Google's category OR the user's tags (70) + a loaded
-  // website (30, once contact is fetched — a real, reachable business).
+  // Fit: keywords match what GOOGLE says the business is — its category and its
+  // name (e.g. "FAL Doors", "Warmfire") — NOT the user's own tag. Matching the
+  // tag made every tagged lead score the same, so it's deliberately excluded.
+  // Match (70) + a loaded website (30, once contact is fetched — a real business).
   let fit: number | null = null;
   if (targetKeywords.length && !closed) {
-    const hay = `${detail.category ?? ""} ${segment ?? ""}`.toLowerCase();
+    const hay = `${detail.category ?? ""} ${detail.company ?? ""}`.toLowerCase();
     const matched = targetKeywords.some((k) => k && hay.includes(k.toLowerCase()));
     fit = (matched ? 70 : 0) + (contact?.website ? 30 : 0);
-    if (matched) reasons.push("category match");
+    if (matched) reasons.push("category/name match");
   }
 
   // Overall favors Fit (are they the right company?) over Reach (can I contact

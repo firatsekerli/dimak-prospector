@@ -305,7 +305,6 @@ export default function Console() {
       score: scoreLead({
         detail: details[r.placeId],
         contact: contacts[r.placeId],
-        segment: r.segment,
         emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
         targetKeywords: fitKeywords,
       }),
@@ -692,13 +691,13 @@ export default function Console() {
           {/* Good-fit keywords — drive the Fit half of the lead score */}
           <div className="mt-3 border-t border-line pt-3">
             <label htmlFor="fitkw" className="mb-1.5 block text-[11px] tracking-[0.05em] text-steel">
-              Good-fit keywords <span className="text-mute">— categories worth selling to (for the Fit score)</span>
+              Good-fit keywords <span className="text-mute">— words that mark a good prospect; matched against each lead&apos;s Google category and name (for the Fit score)</span>
             </label>
             <input
               id="fitkw"
               value={fitInput}
               onChange={(e) => saveFitKeywords(e.target.value)}
-              placeholder="e.g. distributor, contractor, building materials, hardware"
+              placeholder="e.g. door, manufacturer, hardware, building materials, metal, construction, contractor, supplier, wholesaler"
               className="control w-full text-xs"
             />
           </div>
