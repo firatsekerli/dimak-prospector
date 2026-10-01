@@ -31,6 +31,7 @@ export const prospects = pgTable("prospects", {
   segment: text("segment"), // user-defined tags, " | "-joined
   country: text("country"), // the country the user searched (their input, not Google's)
   city: text("city"), // the city the user searched
+  searchTerms: text("search_terms"), // the keyword(s) the user searched to find it, " | "-joined
   contactEmail: text("contact_email"), // manually entered by the user, " | "-joined (their own CRM data)
   status: text("status").notNull().default("New"), // New | Contacted | Replied | Not a fit
   source: text("source"), // e.g. 'Google Places'

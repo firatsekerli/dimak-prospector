@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS "prospects" (
   "segment"       text,
   "country"       text,
   "city"          text,
+  "search_terms"  text,
   "contact_email" text,
   "status"        text NOT NULL DEFAULT 'New',
   "source"     text,

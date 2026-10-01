@@ -79,6 +79,7 @@ export async function POST(request: Request) {
       segment,
       country: countryName,
       city,
+      searchTerms: keyword,
       source: "Google Places",
     });
   }
@@ -105,6 +106,19 @@ export async function POST(request: Request) {
             ) AS tag
           ) tags
           WHERE trim(tag) <> ''
+        )`,
+        searchTerms: sql`(
+          SELECT COALESCE(string_agg(term, ' | ' ORDER BY term), '')
+          FROM (
+            SELECT DISTINCT trim(term) AS term
+            FROM unnest(
+              string_to_array(
+                COALESCE(${prospects.searchTerms}, '') || ' | ' || COALESCE(excluded.search_terms, ''),
+                ' | '
+              )
+            ) AS term
+          ) terms
+          WHERE trim(term) <> ''
         )`,
         updatedAt: sql`now()`,
         // status and notes intentionally omitted — never clobbered on a re-find.

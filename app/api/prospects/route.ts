@@ -31,6 +31,7 @@ export async function GET(request: Request) {
       segment: prospects.segment,
       country: prospects.country,
       city: prospects.city,
+      searchTerms: prospects.searchTerms,
       contactEmail: prospects.contactEmail,
       status: prospects.status,
       source: prospects.source,

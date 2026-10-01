@@ -1234,6 +1234,11 @@ function Row({
             <div className="font-semibold">{d.company || <span className="text-mute">—</span>}</div>
           )}
           {d?.category && <div className="text-xs text-mute">{d.category}</div>}
+          {r.searchTerms && (
+            <div className="text-[11px] text-mute">
+              <span className="text-steel">found via:</span> {r.searchTerms}
+            </div>
+          )}
           {closed && <div className="text-xs font-semibold text-status-nofit">Permanently closed</div>}
           <div className="mt-0.5 flex gap-2 text-xs">
             {d?.googleMapsUrl && (

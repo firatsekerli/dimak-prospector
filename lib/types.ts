@@ -18,6 +18,7 @@ export type ProspectRow = {
   segment: string | null;
   country: string | null;
   city: string | null;
+  searchTerms: string | null; // keyword(s) used to find this lead
   contactEmail: string | null; // manually entered by the user
   status: string;
   notes: ProspectNote[]; // timestamped note log, newest first
