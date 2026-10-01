@@ -8,9 +8,56 @@
 
 const PLACES_URL = "https://places.googleapis.com/v1/places:searchText";
 
-// Search only needs the id (to store) and businessStatus (to skip closed) —
-// everything else is fetched live, so keep this at the cheapest tier.
-const SEARCH_FIELD_MASK = ["places.id", "places.businessStatus", "nextPageToken"].join(",");
+// Search needs the id (to store), businessStatus (to skip closed) and the
+// business type (to drop irrelevant padding — see JUNK_TYPES). `businessStatus`
+// already puts this call on the Pro SKU, so adding `primaryType`/`types` costs
+// nothing extra. Everything else (name, phone, website) is fetched live.
+const SEARCH_FIELD_MASK = [
+  "places.id",
+  "places.businessStatus",
+  "places.primaryType",
+  "places.types",
+  "nextPageToken",
+].join(",");
+
+/**
+ * Google business types that are never fire-door buyers. The Places text search
+ * ranks real matches first, then pads the tail of deep pages with prominent but
+ * unrelated local places (a church, a campground, a hotel). Google's own UI
+ * hides that tail; we drop it here by primary type so it never becomes a lead.
+ *
+ * This is a DENYLIST (drop these, keep everything else) so we never accidentally
+ * hide a real supplier Google mis-typed. Edit freely to tune per market — the
+ * strings are Google Places "Table A" type ids (e.g. `church`, `campground`).
+ */
+export const JUNK_TYPES = new Set<string>([
+  // Places of worship
+  "church", "mosque", "synagogue", "hindu_temple", "place_of_worship",
+  // Lodging
+  "lodging", "hotel", "motel", "inn", "hostel", "guest_house", "bed_and_breakfast",
+  "resort_hotel", "extended_stay_hotel", "campground", "camping_cabin", "rv_park",
+  "cottage", "farmstay",
+  // Food & drink
+  "restaurant", "bar", "cafe", "coffee_shop", "bakery", "fast_food_restaurant",
+  "meal_delivery", "meal_takeaway", "night_club", "food",
+  // Tourism / culture / leisure
+  "tourist_attraction", "historical_landmark", "historical_place", "monument",
+  "museum", "art_gallery", "cultural_landmark", "amusement_park", "aquarium",
+  "zoo", "national_park", "park", "botanical_garden", "stadium",
+  // Education
+  "school", "primary_school", "secondary_school", "preschool", "university",
+  // Health (end-users at best, not resale leads)
+  "hospital", "pharmacy", "drugstore", "dentist", "doctor", "veterinary_care",
+  // Personal services / retail that don't buy fire doors
+  "gym", "spa", "beauty_salon", "hair_salon", "gas_station", "atm", "bank",
+  "supermarket", "grocery_store", "convenience_store",
+]);
+
+/** True if a place's primary type (or, lacking one, any of its types) is junk. */
+function isJunk(primaryType: string, types: string[]): boolean {
+  if (primaryType) return JUNK_TYPES.has(primaryType);
+  return types.some((t) => JUNK_TYPES.has(t));
+}
 
 // Basic details — Pro tier (free within the monthly allowance). No phone/website.
 const BASIC_FIELD_MASK = [
@@ -114,16 +161,27 @@ export async function placesSearch(query: string, region: string, apiKey: string
       nextPageToken?: string;
     };
 
+    // Keep only relevant results: drop junk business types (church, hotel, …).
+    // Google ranks real matches first, so the junk clusters in the tail of the
+    // deep pages — this is where the churches/campgrounds were coming from.
+    let keptThisPage = 0;
     for (const p of data.places ?? []) {
-      rows.push({
-        placeId: (p.id as string) ?? "",
-        businessStatus: (p.businessStatus as string) ?? "",
-      });
+      const placeId = (p.id as string) ?? "";
+      if (!placeId) continue;
+      const primaryType = (p.primaryType as string) ?? "";
+      const types = (p.types as string[]) ?? [];
+      if (isJunk(primaryType, types)) continue;
+      rows.push({ placeId, businessStatus: (p.businessStatus as string) ?? "" });
+      keptThisPage += 1;
     }
 
     token = data.nextPageToken ?? null;
     pages += 1;
     if (!token) break;
+    // Thin market: once a whole page is padding (nothing relevant survived the
+    // filter), the next pages are only more padding — stop instead of paying for
+    // them. Rich markets keep a steady stream of real results and page on.
+    if (keptThisPage === 0) break;
     await sleep(2000); // token needs a moment to become valid
   }
 
