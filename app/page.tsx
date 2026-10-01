@@ -41,8 +41,8 @@ const fmtUSD = (v: number | null) => (v == null ? "—" : usdCompact.format(v));
 
 // Server-side filters (backed by stored columns) vs. client-side filters
 // (evaluated over the live Place Details data, which is never stored).
-type Filters = { country: string; segment: string; category: string; status: string; website: string; q: string };
-const DEFAULT_FILTERS: Filters = { country: "All", segment: "All", category: "All", status: "All", website: "All", q: "" };
+type Filters = { country: string; city: string; segment: string; category: string; status: string; searchTerm: string; website: string; q: string };
+const DEFAULT_FILTERS: Filters = { country: "All", city: "All", segment: "All", category: "All", status: "All", searchTerm: "All", website: "All", q: "" };
 const SERVER_KEYS = new Set<keyof Filters>(["country", "segment", "status"]);
 const DETAILS_CHUNK = 60;
 
@@ -240,6 +240,23 @@ export default function Console() {
     return [...set];
   }, [data, filters.country]);
   const filterSegments = useMemo(() => ["All", ...segments], [segments]);
+  // Cities present in the loaded rows (already narrowed to the chosen country).
+  const filterCities = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of data?.rows ?? []) if (r.city) set.add(r.city);
+    return ["All", ...[...set].sort()];
+  }, [data]);
+  // Distinct search keywords ("found via"), split from the " | "-joined field.
+  const filterSearchTerms = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of data?.rows ?? []) {
+      for (const t of (r.searchTerms ?? "").split(" | ")) {
+        const term = t.trim();
+        if (term) set.add(term);
+      }
+    }
+    return ["All", ...[...set].sort()];
+  }, [data]);
   // Categories come from the live details we've loaded, not the DB.
   const filterCategories = useMemo(() => {
     const set = new Set<string>();
@@ -253,10 +270,15 @@ export default function Console() {
   // Client-side view: apply the filters that depend on live content.
   const displayedRows = useMemo(() => {
     const rows = data?.rows ?? [];
-    const { category, q } = filters;
+    const { city, category, searchTerm, q } = filters;
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
       const d = details[r.placeId];
+      if (city !== "All" && r.city !== city) return false;
+      if (searchTerm !== "All") {
+        const terms = (r.searchTerms ?? "").split(" | ").map((t) => t.trim());
+        if (!terms.includes(searchTerm)) return false;
+      }
       if (category !== "All" && (!d || d.category !== category)) return false;
       if (needle) {
         const hay = `${d?.company ?? ""} ${r.city ?? ""}`.toLowerCase();
@@ -393,7 +415,9 @@ export default function Console() {
     setActiveCities(Object.fromEntries(cities.map((c) => [c.city, on])));
 
   const changeFilter = (key: keyof Filters, value: string) => {
-    const next = { ...filters, [key]: value };
+    let next = { ...filters, [key]: value };
+    // City options depend on the chosen country, so a country change resets it.
+    if (key === "country") next = { ...next, city: "All" };
     setFilters(next);
     if (SERVER_KEYS.has(key)) reload(next); // client-only filters just re-render
   };
@@ -771,9 +795,11 @@ export default function Console() {
         {/* Filters (one row) */}
         <div className="mb-3 flex flex-wrap items-end gap-2.5">
           <FilterSelect label="Country" value={filters.country} options={filterCountries} onChange={(v) => changeFilter("country", v)} width="min-w-[150px]" />
+          <FilterSelect label="City" value={filters.city} options={filterCities} onChange={(v) => changeFilter("city", v)} width="min-w-[140px]" />
           <FilterSelect label="Segment" value={filters.segment} options={filterSegments} onChange={(v) => changeFilter("segment", v)} width="min-w-[140px]" />
           <FilterSelect label="Category" value={filters.category} options={filterCategories} onChange={(v) => changeFilter("category", v)} width="min-w-[150px]" />
           <FilterSelect label="Status" value={filters.status} options={["All", ...(config?.statuses ?? [])]} onChange={(v) => changeFilter("status", v)} width="w-[120px] min-w-[120px]" />
+          <FilterSelect label="Found via" value={filters.searchTerm} options={filterSearchTerms} onChange={(v) => changeFilter("searchTerm", v)} width="min-w-[150px]" />
           <div className="min-w-[150px] flex-1">
             <label className={label}>Find in list</label>
             <input value={filters.q} onChange={(e) => changeFind(e.target.value)} placeholder="company or city" className="control w-full" />
