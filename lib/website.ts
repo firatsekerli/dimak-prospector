@@ -99,6 +99,7 @@ function extractSocials(html: string): { label: string; url: string }[] {
 }
 
 export interface WebsiteAnalysis {
+  reachable: boolean; // false = the site couldn't be read (blocks bots / timed out)
   businessTypes: string[];
   certifications: string[];
   socials: { label: string; url: string }[];
@@ -128,9 +129,13 @@ async function fetchText(url: string): Promise<string | null> {
 export async function analyzeWebsite(website: string, keywords: string[] = []): Promise<WebsiteAnalysis> {
   const base = website.replace(/\/+$/, "");
   let html = "";
+  let reachable = false;
   for (const path of PATHS.slice(0, MAX_PAGES)) {
     const page = await fetchText(base + path);
-    if (page) html += "\n" + page;
+    if (page) {
+      html += "\n" + page;
+      reachable = true;
+    }
   }
 
   const text = html.toLowerCase();
@@ -161,5 +166,5 @@ export async function analyzeWebsite(website: string, keywords: string[] = []): 
 
   const socials = extractSocials(html);
 
-  return { businessTypes, certifications, socials, matchedKeywords };
+  return { reachable, businessTypes, certifications, socials, matchedKeywords };
 }

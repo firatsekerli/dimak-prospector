@@ -1673,7 +1673,14 @@ function SiteAnalysisModal({
               Couldn&apos;t read this website (it may block automated visits). Try the “site” link directly.
             </p>
           )}
-          {state === "done" && analysis && (
+          {state === "done" && analysis && !analysis.reachable && (
+            <p className="text-center text-xs text-mute">
+              Couldn&apos;t read this website — it blocks automated visits (common for sites behind
+              Cloudflare or built in JavaScript). This doesn&apos;t mean they&apos;re a bad lead; open the
+              “site” link to check it yourself. The score is unaffected.
+            </p>
+          )}
+          {state === "done" && analysis && analysis.reachable && (
             <div className="space-y-3 text-sm">
               <AnalysisGroup label="Your keywords found on site" items={analysis.matchedKeywords} />
               <AnalysisGroup label="Business type" items={analysis.businessTypes} />
@@ -1699,7 +1706,7 @@ function SiteAnalysisModal({
                 )}
               </div>
               {empty && (
-                <p className="text-center text-xs text-mute">No signals detected on the site.</p>
+                <p className="text-center text-xs text-mute">We read the site but found no notable signals.</p>
               )}
               <p className="border-t border-line pt-2 text-[10px] text-mute">
                 Read live from the company&apos;s own website. Non-personal business signals only — nothing is stored.

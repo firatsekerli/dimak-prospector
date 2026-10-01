@@ -30,6 +30,7 @@ export type ProspectRow = {
 // Live, non-personal business signals from POST /api/prospects/analyze.
 // Read from the company's own website on demand; never stored.
 export type WebsiteAnalysis = {
+  reachable: boolean; // false = the site couldn't be read (blocks bots / timed out)
   businessTypes: string[];
   certifications: string[];
   socials: { label: string; url: string }[];
