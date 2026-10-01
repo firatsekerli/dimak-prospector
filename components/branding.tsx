@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { branding } from "@/lib/branding";
 
 // Ensure a link is absolute: if the env URL has no scheme (e.g. "acme.com"),
@@ -25,10 +26,12 @@ export function Brand() {
   );
 }
 
-/** Thin, centered footer with the operator's (or white-label customer's) info. */
-export function SiteFooter() {
+/** Thin, centered footer with the operator's (or white-label customer's) info.
+ *  `showGuide` adds a link to the in-app user guide (used on the console, not
+ *  the login page where the guide sits behind auth). */
+export function SiteFooter({ showGuide = false }: { showGuide?: boolean }) {
   const { companyName, companyUrl, footerNote } = branding;
-  if (!companyName && !footerNote) return null;
+  if (!companyName && !footerNote && !showGuide) return null;
   const year = new Date().getFullYear();
   const href = externalUrl(companyUrl);
   return (
@@ -43,6 +46,11 @@ export function SiteFooter() {
             <span>© {year} {companyName}</span>
           ))}
         {footerNote && <span>{footerNote}</span>}
+        {showGuide && (
+          <Link href="/guide" className="hover:text-ember-dk">
+            User guide
+          </Link>
+        )}
       </div>
     </footer>
   );

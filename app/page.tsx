@@ -93,6 +93,7 @@ export default function Console() {
   const [cleanupBusy, setCleanupBusy] = useState(false);
   const [cleanupMsg, setCleanupMsg] = useState("");
   const [notesFor, setNotesFor] = useState<string | null>(null); // placeId of the open notes popup
+  const [guideHint, setGuideHint] = useState(false); // "new here? read the guide" banner
 
   // Fetch live Place Details for any place_ids we don't already have (and aren't
   // already fetching), chunked to bound each request. Merges into the cache.
@@ -210,8 +211,18 @@ export default function Console() {
         const dr = JSON.parse(localStorage.getItem("outreachDrafts") ?? "null");
         if (dr && typeof dr === "object") setDrafts(dr);
       } catch {}
+      try {
+        if (localStorage.getItem("guideHintDismissed") !== "1") setGuideHint(true);
+      } catch {}
     })();
   }, []);
+
+  const dismissGuideHint = () => {
+    setGuideHint(false);
+    try {
+      localStorage.setItem("guideHintDismissed", "1");
+    } catch {}
+  };
 
   const saveFitKeywords = (v: string) => {
     setFitInput(v);
@@ -562,6 +573,21 @@ export default function Console() {
         </button>
       </header>
 
+      {guideHint && (
+        <div className="flex items-center gap-3 border-b border-line bg-panel px-[22px] py-2 text-[12px] text-steel">
+          <span>
+            New here?{" "}
+            <Link href="/guide" className="font-semibold text-ember-dk hover:underline" onClick={dismissGuideHint}>
+              Read the guide
+            </Link>{" "}
+            to see how everything works.
+          </span>
+          <button onClick={dismissGuideHint} className="ml-auto text-mute hover:text-ink" aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
+
       <AdSlot />
 
       <main className="mx-auto w-full max-w-[1220px] px-[22px] pb-16 pt-5">
@@ -889,7 +915,7 @@ export default function Console() {
         )}
       </main>
 
-      <SiteFooter />
+      <SiteFooter showGuide />
 
       {notesFor && (
         <NotesModal
