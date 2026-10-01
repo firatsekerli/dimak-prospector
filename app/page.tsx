@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Brand, SiteFooter, AdSlot } from "@/components/branding";
 import { scoreLead, type LeadScore } from "@/lib/score";
 import type {
@@ -547,12 +548,15 @@ export default function Console() {
     <>
       <header className="flex items-center gap-3.5 border-b-[3px] border-ember-dk bg-ember px-[22px] py-3.5 text-white">
         <Brand />
+        <Link href="/guide" className="ml-auto text-xs text-white/80 hover:text-white">
+          Guide
+        </Link>
         <button
           onClick={async () => {
             await fetch("/api/auth/logout", { method: "POST" });
             window.location.href = "/login";
           }}
-          className="ml-auto text-xs text-white/80 hover:text-white"
+          className="text-xs text-white/80 hover:text-white"
         >
           Log out
         </button>
