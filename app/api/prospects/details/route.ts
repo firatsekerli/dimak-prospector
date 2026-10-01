@@ -62,7 +62,7 @@ export async function POST(request: Request) {
 
   const details: Record<
     string,
-    { company: string; category: string; googleMapsUrl: string; businessStatus: string }
+    { company: string; category: string; city: string; googleMapsUrl: string; businessStatus: string }
   > = {};
 
   await mapLimit(ids, CONCURRENCY, async (pid) => {
@@ -71,6 +71,7 @@ export async function POST(request: Request) {
     details[pid] = {
       company: d.company,
       category: d.category,
+      city: d.city,
       googleMapsUrl: d.googleMapsUrl,
       businessStatus: d.businessStatus,
     };

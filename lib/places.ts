@@ -60,12 +60,15 @@ function isJunk(primaryType: string, types: string[]): boolean {
 }
 
 // Basic details — Pro tier (free within the monthly allowance). No phone/website.
+// `addressComponents` (also Pro) lets us show the business's REAL city, rather
+// than the city the user happened to search under.
 const BASIC_FIELD_MASK = [
   "id",
   "displayName",
   "primaryTypeDisplayName",
   "googleMapsUri",
   "businessStatus",
+  "addressComponents",
 ].join(",");
 
 // Contact details — Enterprise/contact tier (billed). Fetched only on demand.
@@ -81,8 +84,26 @@ export interface BasicPlace {
   placeId: string;
   company: string;
   category: string;
+  city: string;
   googleMapsUrl: string;
   businessStatus: string;
+}
+
+interface AddressComponent {
+  longText?: string;
+  shortText?: string;
+  types?: string[];
+}
+
+// Pull the business's city from Google's structured address components, trying
+// the most city-like type first and falling back through broader ones.
+function cityFromComponents(components: AddressComponent[]): string {
+  const prefer = ["locality", "postal_town", "administrative_area_level_2", "sublocality", "administrative_area_level_1"];
+  for (const t of prefer) {
+    const hit = components.find((c) => (c.types ?? []).includes(t));
+    if (hit?.longText) return hit.longText;
+  }
+  return "";
 }
 export interface ContactInfo {
   phone: string;
@@ -107,10 +128,12 @@ export async function placeBasic(placeId: string, apiKey: string): Promise<Basic
   if (!p) return null;
   const displayName = p.displayName as { text?: string } | undefined;
   const primaryType = p.primaryTypeDisplayName as { text?: string } | undefined;
+  const components = (p.addressComponents as AddressComponent[]) ?? [];
   return {
     placeId: (p.id as string) ?? placeId,
     company: displayName?.text ?? "",
     category: primaryType?.text ?? "",
+    city: cityFromComponents(components),
     googleMapsUrl: (p.googleMapsUri as string) ?? "",
     businessStatus: (p.businessStatus as string) ?? "",
   };

@@ -52,6 +52,7 @@ export type ProspectsResponse = {
 export type LiveDetails = {
   company: string;
   category: string;
+  city: string; // the business's real city, from Google (not the searched city)
   googleMapsUrl: string;
   businessStatus: string; // OPERATIONAL | CLOSED_TEMPORARILY | CLOSED_PERMANENTLY | ""
 };

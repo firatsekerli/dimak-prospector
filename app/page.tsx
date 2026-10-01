@@ -240,12 +240,15 @@ export default function Console() {
     return [...set];
   }, [data, filters.country]);
   const filterSegments = useMemo(() => ["All", ...segments], [segments]);
-  // Cities present in the loaded rows (already narrowed to the chosen country).
+  // Cities come from the live details (the business's real city), like categories.
   const filterCities = useMemo(() => {
     const set = new Set<string>();
-    for (const r of data?.rows ?? []) if (r.city) set.add(r.city);
+    for (const r of data?.rows ?? []) {
+      const c = details[r.placeId]?.city;
+      if (c) set.add(c);
+    }
     return ["All", ...[...set].sort()];
-  }, [data]);
+  }, [data, details]);
   // Distinct search keywords ("found via"), split from the " | "-joined field.
   const filterSearchTerms = useMemo(() => {
     const set = new Set<string>();
@@ -274,14 +277,14 @@ export default function Console() {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
       const d = details[r.placeId];
-      if (city !== "All" && r.city !== city) return false;
+      if (city !== "All" && (!d || d.city !== city)) return false;
       if (searchTerm !== "All") {
         const terms = (r.searchTerms ?? "").split(" | ").map((t) => t.trim());
         if (!terms.includes(searchTerm)) return false;
       }
       if (category !== "All" && (!d || d.category !== category)) return false;
       if (needle) {
-        const hay = `${d?.company ?? ""} ${r.city ?? ""}`.toLowerCase();
+        const hay = `${d?.company ?? ""} ${d?.city ?? ""}`.toLowerCase();
         if (!hay.includes(needle)) return false;
       }
       return true;
@@ -890,7 +893,7 @@ export default function Console() {
           title={details[notesFor]?.company || notesFor}
           subtitle={(() => {
             const r = data?.rows.find((x) => x.placeId === notesFor);
-            return r ? [r.city, r.country].filter(Boolean).join(", ") : "";
+            return r ? [details[notesFor]?.city, r.country].filter(Boolean).join(", ") : "";
           })()}
           notes={data?.rows.find((x) => x.placeId === notesFor)?.notes ?? []}
           onAdd={(body) => addNote(notesFor, body)}
@@ -1316,7 +1319,9 @@ function Row({
       </td>
       <td className={cell}>
         {r.country}
-        <div className="text-xs text-mute">{r.city}</div>
+        {/* The business's REAL city, loaded live from Google — not the city the
+            lead was searched under (which can differ, since search is country-wide). */}
+        <div className="text-xs text-mute">{loading ? "…" : d?.city || "—"}</div>
       </td>
 
       {/* Contact details: phone + WhatsApp + site, loaded on demand (paid tier) */}
