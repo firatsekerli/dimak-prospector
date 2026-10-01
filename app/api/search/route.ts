@@ -55,9 +55,15 @@ export async function POST(request: Request) {
     .limit(1);
   const countryName = countryRow?.name ?? countryCode;
 
+  // Query phrasing matters enormously. "<keyword> in <city>" makes Google
+  // hard-localize to the city and starves the result (e.g. "fire door supplier
+  // in Berat" → 1 hit). Appending the country name broadens it to a country-wide
+  // relevance search with the city as a soft hint (same query → 31 hits), which
+  // is what the consumer Google search does. Verified empirically, Oct 2026.
+  const place = countryName ? `${city} ${countryName}` : city;
   let hits;
   try {
-    hits = await placesSearch(`${keyword} in ${city}`, countryCode, apiKey);
+    hits = await placesSearch(`${keyword} in ${place}`, countryCode, apiKey);
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Places API error" },
