@@ -81,14 +81,11 @@ export function scoreLead(opts: {
     reasons.push(typeHit || userHit ? "relevant type" : "off-target");
   }
 
-  // Overall favors Fit (are they the right company?) over Reach (can I contact
-  // them?). When reachability is still unknown, score on Fit alone.
-  let overall: number | null;
-  if (closed) overall = 0;
-  else if (fit == null && reach == null) overall = null;
-  else if (fit == null) overall = reach;
-  else if (reach == null) overall = fit;
-  else overall = Math.round(0.6 * fit + 0.4 * reach);
+  // Headline score = Fit only (are they the right kind of company?). Reach is
+  // reported separately, NOT blended in — otherwise loading a lead's contact
+  // would move the headline up or down unpredictably (a known source of
+  // confusion). Reach is still there in the tooltip to help you pick who to work.
+  const overall: number | null = closed ? 0 : fit;
 
   return { reach, fit, overall, closed, reasons };
 }
