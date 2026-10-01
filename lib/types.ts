@@ -33,6 +33,7 @@ export type WebsiteAnalysis = {
   businessTypes: string[];
   certifications: string[];
   socials: { label: string; url: string }[];
+  matchedKeywords: string[]; // good-fit keyword words found on the site
 };
 export type AnalyzeResponse = { analysis: WebsiteAnalysis };
 

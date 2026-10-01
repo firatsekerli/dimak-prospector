@@ -16,7 +16,7 @@ export const maxDuration = 60; // fetches a few pages of the company site
  * Details fetch), so this makes no Google Places call.
  */
 export async function POST(request: Request) {
-  let body: { website?: string };
+  let body: { website?: string; keywords?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -27,7 +27,10 @@ export async function POST(request: Request) {
   if (!website || !/^https?:\/\//i.test(website)) {
     return NextResponse.json({ error: "A valid website URL is required." }, { status: 400 });
   }
+  const keywords = Array.isArray(body.keywords)
+    ? body.keywords.filter((k): k is string => typeof k === "string")
+    : [];
 
-  const analysis = await analyzeWebsite(website);
+  const analysis = await analyzeWebsite(website, keywords);
   return NextResponse.json({ analysis });
 }

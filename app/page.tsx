@@ -76,6 +76,7 @@ export default function Console() {
 
   // Contact fields (phone/website) — the paid tier, fetched only on demand.
   const [contacts, setContacts] = useState<Record<string, ContactInfo>>({});
+  const [analyses, setAnalyses] = useState<Record<string, WebsiteAnalysis>>({}); // website analysis per lead (session)
   const contactsRef = useRef<Record<string, ContactInfo>>({});
   const [contactBusy, setContactBusy] = useState<Record<string, boolean>>({});
 
@@ -317,13 +318,14 @@ export default function Console() {
       score: scoreLead({
         detail: details[r.placeId],
         contact: contacts[r.placeId],
+        analysis: analyses[r.placeId],
         emails: (r.contactEmail ?? "").split(" | ").filter(Boolean),
         targetKeywords: fitKeywords,
       }),
     }));
     if (sortByScore) list.sort((a, b) => (b.score.overall ?? -1) - (a.score.overall ?? -1));
     return list;
-  }, [displayedRows, details, contacts, fitKeywords, sortByScore]);
+  }, [displayedRows, details, contacts, analyses, fitKeywords, sortByScore]);
 
   const addSegment = async () => {
     const name = newSegment.trim();
@@ -393,6 +395,7 @@ export default function Console() {
     contactsRef.current = {};
     setDetails({});
     setContacts({});
+    setAnalyses({});
     void fetchDetails((data?.rows ?? []).map((r) => r.placeId));
   };
 
@@ -935,6 +938,8 @@ export default function Console() {
         <SiteAnalysisModal
           title={details[analyzeFor.placeId]?.company || analyzeFor.placeId}
           website={analyzeFor.website}
+          keywords={fitKeywords}
+          onResult={(a) => setAnalyses((prev) => ({ ...prev, [analyzeFor.placeId]: a }))}
           onClose={() => setAnalyzeFor(null)}
         />
       )}
@@ -1592,10 +1597,14 @@ function NotesModal({
 function SiteAnalysisModal({
   title,
   website,
+  keywords,
+  onResult,
   onClose,
 }: {
   title: string;
   website: string;
+  keywords: string[];
+  onResult: (analysis: WebsiteAnalysis) => void;
   onClose: () => void;
 }) {
   const [state, setState] = useState<"loading" | "error" | "done">("loading");
@@ -1610,7 +1619,7 @@ function SiteAnalysisModal({
         const res = await fetch("/api/prospects/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ website }),
+          body: JSON.stringify({ website, keywords }),
         });
         const d: AnalyzeResponse & { error?: string } = await res.json();
         if (cancelled) return;
@@ -1618,6 +1627,7 @@ function SiteAnalysisModal({
         else {
           setAnalysis(d.analysis);
           setState("done");
+          onResult(d.analysis); // feed the score (upward-only)
         }
       } catch {
         if (!cancelled) setState("error");
@@ -1627,13 +1637,15 @@ function SiteAnalysisModal({
       cancelled = true;
       window.removeEventListener("keydown", onKey);
     };
-  }, [website, onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [website]);
 
   const empty =
     analysis &&
     analysis.businessTypes.length === 0 &&
     analysis.certifications.length === 0 &&
-    analysis.socials.length === 0;
+    analysis.socials.length === 0 &&
+    analysis.matchedKeywords.length === 0;
 
   return (
     <div
@@ -1663,6 +1675,7 @@ function SiteAnalysisModal({
           )}
           {state === "done" && analysis && (
             <div className="space-y-3 text-sm">
+              <AnalysisGroup label="Your keywords found on site" items={analysis.matchedKeywords} />
               <AnalysisGroup label="Business type" items={analysis.businessTypes} />
               <AnalysisGroup label="Certifications / standards" items={analysis.certifications} />
               <div>

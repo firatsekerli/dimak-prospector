@@ -102,7 +102,10 @@ export interface WebsiteAnalysis {
   businessTypes: string[];
   certifications: string[];
   socials: { label: string; url: string }[];
+  matchedKeywords: string[]; // good-fit keyword words actually found on the site
 }
+
+const KW_STOPWORDS = new Set(["and", "the", "for", "with"]);
 
 async function fetchText(url: string): Promise<string | null> {
   const controller = new AbortController();
@@ -122,7 +125,7 @@ async function fetchText(url: string): Promise<string | null> {
  * business signals. Returns empty arrays if the site can't be read (many sites
  * behind a JS/Cloudflare challenge won't serve a plain fetch).
  */
-export async function analyzeWebsite(website: string): Promise<WebsiteAnalysis> {
+export async function analyzeWebsite(website: string, keywords: string[] = []): Promise<WebsiteAnalysis> {
   const base = website.replace(/\/+$/, "");
   let html = "";
   for (const path of PATHS.slice(0, MAX_PAGES)) {
@@ -130,9 +133,10 @@ export async function analyzeWebsite(website: string): Promise<WebsiteAnalysis> 
     if (page) html += "\n" + page;
   }
 
+  const text = html.toLowerCase();
+
   const businessTypes: string[] = [];
   if (html) {
-    const text = html.toLowerCase();
     for (const t of BUSINESS_TYPES) {
       if (new RegExp(`\\b${t}\\b`).test(text)) businessTypes.push(t[0].toUpperCase() + t.slice(1));
     }
@@ -143,7 +147,19 @@ export async function analyzeWebsite(website: string): Promise<WebsiteAnalysis> 
     if (c.re.test(html) && !certifications.includes(c.label)) certifications.push(c.label);
   }
 
+  // Which of the user's good-fit keyword words actually appear on the site — so a
+  // company whose Google category is generic but whose site clearly sells the
+  // product ("door", "window"…) can still be recognized as a strong fit.
+  const tokens = [
+    ...new Set(
+      keywords
+        .flatMap((k) => k.toLowerCase().split(/[^a-z0-9]+/))
+        .filter((t) => t.length >= 3 && !KW_STOPWORDS.has(t))
+    ),
+  ];
+  const matchedKeywords = text ? tokens.filter((t) => text.includes(t)) : [];
+
   const socials = extractSocials(html);
 
-  return { businessTypes, certifications, socials };
+  return { businessTypes, certifications, socials, matchedKeywords };
 }

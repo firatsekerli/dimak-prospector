@@ -1,4 +1,4 @@
-import type { LiveDetails, ContactInfo } from "./types";
+import type { LiveDetails, ContactInfo, WebsiteAnalysis } from "./types";
 
 // A transparent, rule-based lead score computed live in the browser from data
 // already loaded — no black box, and nothing extra is stored. Two axes:
@@ -34,10 +34,11 @@ export type LeadScore = {
 export function scoreLead(opts: {
   detail?: LiveDetails;
   contact?: ContactInfo;
+  analysis?: WebsiteAnalysis; // from "analyze" — lets the website confirm a fit
   emails: string[];
   targetKeywords: string[];
 }): LeadScore {
-  const { detail, contact, emails, targetKeywords } = opts;
+  const { detail, contact, analysis, emails, targetKeywords } = opts;
   if (!detail) return { reach: null, fit: null, overall: null, closed: false, reasons: [] };
 
   const closed = detail.businessStatus === "CLOSED_PERMANENTLY";
@@ -78,7 +79,23 @@ export function scoreLead(opts: {
       .filter((t) => t.length >= 3 && !STOPWORDS.has(t));
     const userHit = userTokens.some((t) => hay.includes(t));
     fit = 10 + (typeHit ? 45 : 0) + (userHit ? 45 : 0);
-    reasons.push(typeHit || userHit ? "relevant type" : "off-target");
+    if (typeHit || userHit) reasons.push("relevant type");
+
+    // If the site has been analyzed, let it CONFIRM a fit — a company whose Google
+    // category is generic but whose website sells the product ("door", etc.) or
+    // carries relevant certifications is a strong fit. Analyze can only RAISE Fit,
+    // never lower it, so revealing more evidence never penalizes a lead.
+    if (analysis) {
+      const siteUserHit = analysis.matchedKeywords.length > 0;
+      const siteTypeHit = analysis.businessTypes.length > 0 || analysis.certifications.length > 0;
+      const siteFit = 10 + (siteTypeHit ? 45 : 0) + (siteUserHit ? 45 : 0);
+      if (siteFit > fit) {
+        fit = siteFit;
+        reasons.push("website confirms fit");
+      }
+    }
+
+    if (fit <= 10) reasons.push("off-target");
   }
 
   // Headline score = Fit only (are they the right kind of company?). Reach is
